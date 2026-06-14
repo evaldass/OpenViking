@@ -219,10 +219,17 @@ class RerankClient(RerankBase):
 
             return OpenAIRerankClient.from_config(config)
 
+<<<<<<< HEAD
         if provider == "jev":
             from openviking.models.rerank.jev_rerank import JevRerankClient
 
             return JevRerankClient.from_config(config)
+=======
+        if provider == "tei":
+            from openviking.models.rerank.tei_rerank import TEIRerankClient
+
+            return TEIRerankClient.from_config(config)
+>>>>>>> 35c0a4bd2 (feat(rerank): add TEI provider)
 
         return cls(
             ak=config.ak,
