@@ -1142,6 +1142,8 @@ absolute score filtering. When enabling Choice, set `"threshold": 0`. The MCP `f
 and `search` `min_score` argument overrides that setting, so pass `min_score=0` when
 using Choice through MCP.
 
+For TEI, `api_base` accepts the server base URL or full `/rerank` endpoint. Authentication is optional; with `api_key`, set `"provider": "tei"` explicitly.
+
 **Parameters**
 
 | Parameter | Type | Description |
@@ -1166,6 +1168,7 @@ using Choice through MCP.
 - `openai`: OpenAI-compatible Rerank API
 - `litellm`: LiteLLM Rerank API
 - `jev`: Jev (TypeSafe System One) structured-decision API with Choice comparison and independent Noul scoring
+- `tei`: Hugging Face Text Embeddings Inference rerank API
 
 If rerank is not configured, search uses vector similarity only.
 
