@@ -6,11 +6,19 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class RerankConfig(BaseModel):
+<<<<<<< HEAD
     """Configuration for rerank API. Supports VikingDB, Cohere, OpenAI-compatible, LiteLLM, and Jev (TypeSafe) providers."""
 
     provider: Optional[str] = Field(
         default=None,
         description="Rerank provider: 'vikingdb', 'cohere', 'openai', 'litellm', or 'jev'. Auto-detected from config if omitted.",
+=======
+    """Configuration for rerank API. Supports VikingDB, Cohere, OpenAI-compatible, LiteLLM, and TEI providers."""
+
+    provider: Optional[str] = Field(
+        default=None,
+        description="Rerank provider: 'vikingdb', 'cohere', 'openai', 'litellm', or 'tei'. Auto-detected from config if omitted.",
+>>>>>>> 35c0a4bd2 (feat(rerank): add TEI provider)
     )
 
     # VikingDB fields
@@ -22,6 +30,7 @@ class RerankConfig(BaseModel):
     model_name: str = Field(default="doubao-seed-rerank", description="Rerank model name")
     model_version: str = Field(default="251028", description="Rerank model version")
 
+<<<<<<< HEAD
     # Shared provider fields
     api_key: Optional[str] = Field(
         default=None, description="API key for Cohere, OpenAI-compatible, or Jev providers"
@@ -29,10 +38,20 @@ class RerankConfig(BaseModel):
     api_base: Optional[str] = Field(default=None, description="Custom endpoint URL")
     model: Optional[str] = Field(
         default=None, description="Model name for OpenAI-compatible, LiteLLM, or Jev providers"
+=======
+    # Shared / OpenAI-compatible / Cohere / TEI fields
+    api_key: Optional[str] = Field(
+        default=None,
+        description="API key (Cohere Bearer token, OpenAI-compatible providers, or optional TEI auth)",
+    )
+    api_base: Optional[str] = Field(default=None, description="Custom endpoint URL")
+    model: Optional[str] = Field(
+        default=None, description="Model name for OpenAI-compatible, LiteLLM, or TEI providers"
+>>>>>>> 35c0a4bd2 (feat(rerank): add TEI provider)
     )
 
     extra_headers: Optional[Dict[str, str]] = Field(
-        default=None, description="Extra HTTP headers for OpenAI-compatible providers"
+        default=None, description="Extra HTTP headers for OpenAI-compatible or TEI providers"
     )
 
     timeout: float = Field(
@@ -76,6 +95,8 @@ class RerankConfig(BaseModel):
             return "cohere"
         if self.ak and self.sk:
             return "vikingdb"
+        if self.api_base:
+            return "tei"
         return None
 
     @model_validator(mode="after")
@@ -84,6 +105,7 @@ class RerankConfig(BaseModel):
             raise ValueError("Rerank max_input_tokens must be 0 or at least 128")
 
         provider = self._effective_provider()
+<<<<<<< HEAD
         if provider and provider not in [
             "vikingdb",
             "cohere",
@@ -95,6 +117,11 @@ class RerankConfig(BaseModel):
                 "Rerank provider must be one of "
                 "['vikingdb', 'cohere', 'openai', 'litellm', 'jev'], got "
                 f"'{provider}'"
+=======
+        if provider and provider not in ["vikingdb", "cohere", "openai", "litellm", "tei"]:
+            raise ValueError(
+                f"Rerank provider must be one of ['vikingdb', 'cohere', 'openai', 'litellm', 'tei'], got '{provider}'"
+>>>>>>> 35c0a4bd2 (feat(rerank): add TEI provider)
             )
         if provider == "openai":
             if not self.api_key or not self.api_base:
@@ -111,6 +138,9 @@ class RerankConfig(BaseModel):
         if provider == "vikingdb":
             if not self.ak or not self.sk:
                 raise ValueError("VikingDB rerank provider requires 'ak' and 'sk'")
+        if provider == "tei":
+            if not self.api_base:
+                raise ValueError("TEI rerank provider requires 'api_base'")
         return self
 
     def is_available(self) -> bool:
@@ -122,6 +152,8 @@ class RerankConfig(BaseModel):
             return self.api_key is not None and self.api_base is not None
         if p == "litellm":
             return self.model is not None
+        if p == "tei":
+            return self.api_base is not None
         if p == "vikingdb":
             return self.ak is not None and self.sk is not None
         return False

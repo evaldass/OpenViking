@@ -997,8 +997,12 @@ PDF parsing configuration. Three strategies are supported: `local` (local pdfplu
 
 ### rerank
 
+<<<<<<< HEAD
 Reranking model for search result refinement. Supports VikingDB (Volcengine), Cohere,
 OpenAI-compatible APIs, LiteLLM, and Jev.
+=======
+Reranking model for search result refinement. Supports VikingDB (Volcengine), Cohere, OpenAI-compatible APIs, LiteLLM, and Hugging Face Text Embeddings Inference (TEI).
+>>>>>>> 35c0a4bd2 (feat(rerank): add TEI provider)
 
 **Volcengine (VikingDB):**
 
@@ -1030,21 +1034,34 @@ OpenAI-compatible APIs, LiteLLM, and Jev.
 }
 ```
 
+<<<<<<< HEAD
 **Jev (TypeSafe System One) provider:**
+=======
+**Hugging Face Text Embeddings Inference (TEI):**
+>>>>>>> 35c0a4bd2 (feat(rerank): add TEI provider)
 
 ```json
 {
   "rerank": {
+<<<<<<< HEAD
     "provider": "jev",
     "api_key": "your-typesafe-api-key",
     "model": "jev-latest",
     "timeout": 120,
     "log_payloads": false,
     "threshold": 0.1
+=======
+    "provider": "tei",
+    "api_base": "http://localhost:8080",
+    "api_key": "optional-tei-api-key",
+    "model": "BAAI/bge-reranker-v2-m3",
+    "threshold": 0.05
+>>>>>>> 35c0a4bd2 (feat(rerank): add TEI provider)
   }
 }
 ```
 
+<<<<<<< HEAD
 To use Jev through Vercel AI Gateway, point `api_base` at Vercel's
 [TypeSafe-compatible endpoint](https://vercel.com/docs/ai-gateway/sdks-and-apis/typesafe)
 and use Vercel's model ID. The request and response formats are identical to
@@ -1076,11 +1093,15 @@ The Jev adapter sends the query and candidate documents as structured System One
 `state`, then asks one independent Noul relevance question per candidate. Each returned
 yes probability becomes that document's rerank score. All questions are evaluated in
 parallel in one request, and scores do not compete or have to sum to 1.
+=======
+For TEI, `api_base` may be either the server base URL (`http://localhost:8080`) or the full rerank endpoint (`http://localhost:8080/rerank`). `api_key` is optional and is sent as a Bearer token when configured. TEI is auto-detected when only `api_base` is set; if your TEI deployment also uses `api_key`, set `"provider": "tei"` explicitly so it is not treated as an OpenAI-compatible rerank endpoint.
+>>>>>>> 35c0a4bd2 (feat(rerank): add TEI provider)
 
 **Parameters**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
+<<<<<<< HEAD
 | `provider` | str | `"vikingdb"`, `"cohere"`, `"openai"`, `"litellm"`, or `"jev"`. Auto-detected if omitted. |
 | `ak` | str | VikingDB Access Key (vikingdb provider only) |
 | `sk` | str | VikingDB Secret Key (vikingdb provider only) |
@@ -1091,15 +1112,31 @@ parallel in one request, and scores do not compete or have to sum to 1.
 | `timeout` | float | HTTP request timeout in seconds for HTTP rerank providers, including Jev. Default: `30.0` |
 | `max_input_tokens` | int | Maximum estimated raw-text tokens in each query-document pair sent to the reranker. Oversized inputs retain their beginning and end. `0` disables. Default: `0` |
 | `log_payloads` | bool | Log complete rerank request and response payloads. May expose query and document content. Default: `false` |
+=======
+| `provider` | str | `"vikingdb"`, `"cohere"`, `"openai"`, `"litellm"`, or `"tei"`. Auto-detected if omitted. |
+| `ak` | str | VikingDB Access Key (vikingdb provider only) |
+| `sk` | str | VikingDB Secret Key (vikingdb provider only) |
+| `model_name` | str | Model name (vikingdb provider only, default: `doubao-seed-rerank`) |
+| `api_key` | str | API key (for `openai` or `cohere` providers, optional for `tei`) |
+| `api_base` | str | Endpoint URL (for `openai` provider) or TEI base/rerank URL (for `tei`) |
+| `model` | str | Model name (for `openai` and `litellm`; optional label for TEI usage tracking) |
+| `timeout` | float | HTTP request timeout in seconds for OpenAI-compatible providers. Increase for slow or cold-starting local rerank servers. Default: `30.0` |
+| `max_input_tokens` | int | Maximum estimated raw-text tokens in each query-document pair sent to the reranker. Oversized inputs retain their beginning and end. `0` disables truncation. Default: `0` |
+>>>>>>> 35c0a4bd2 (feat(rerank): add TEI provider)
 | `threshold` | float | Score threshold between `0.0` and `1.0`; results below this are filtered out. Default: `0.1` |
-| `extra_headers` | object | Custom HTTP headers (for OpenAI-compatible providers, optional) |
+| `extra_headers` | object | Custom HTTP headers (for OpenAI-compatible or TEI providers, optional) |
 
 **Supported providers:**
 - `vikingdb`: Volcengine VikingDB Rerank API (uses AK/SK)
 - `cohere`: Cohere Rerank API
 - `openai`: OpenAI-compatible Rerank API
+<<<<<<< HEAD
 - `litellm`: LiteLLM Rerank API
 - `jev`: Jev (TypeSafe System One) structured-decision API; each document receives an independent Noul relevance score
+=======
+- `litellm`: LiteLLM rerank API
+- `tei`: Hugging Face Text Embeddings Inference rerank API
+>>>>>>> 35c0a4bd2 (feat(rerank): add TEI provider)
 
 If rerank is not configured, search uses vector similarity only.
 
