@@ -4,6 +4,7 @@
 .venv
 __pycache__
 *.py[cod]
+*.egg-info
 .pytest_cache
 .ruff_cache
 .coverage
@@ -11,10 +12,14 @@ htmlcov
 target/
 src/build/
 docs/.vitepress/dist/
+test_data
+data
 web-studio/node_modules
 web-studio/dist
 openviking/web_studio/dist
 web-studio/.vite
 node_modules
+.mypy_cache
+.DS_Store
 *.log
 *.tmp
