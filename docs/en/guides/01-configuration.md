@@ -1052,7 +1052,7 @@ All size, timeout, and polling values must be greater than zero.
 ### rerank
 
 Reranking model for search result refinement. Supports VikingDB (Volcengine), Cohere,
-OpenAI-compatible APIs, LiteLLM, and Jev.
+OpenAI-compatible APIs, LiteLLM, Jev, and TEI.
 
 **Volcengine (VikingDB):**
 
@@ -1159,6 +1159,7 @@ For TEI, `api_base` accepts the server base URL or full `/rerank` endpoint. Auth
 | `timeout` | float | HTTP request timeout in seconds for HTTP rerank providers, including Jev. Default: `30.0` |
 | `max_input_tokens` | int | Maximum estimated raw-text tokens in each query-document pair sent to the reranker. Oversized inputs retain their beginning and end. `0` disables. Default: `0` |
 | `log_payloads` | bool | Log complete rerank request and response payloads. May expose query and document content. Default: `false` |
+| `batch_size` | int | Maximum documents per rerank request (default `32`); TEI candidates are chunked. |
 | `threshold` | float | Score threshold between `0.0` and `1.0`; results below this are filtered out. Default: `0.1` |
 | `extra_headers` | object | Custom HTTP headers (for OpenAI-compatible providers, optional) |
 
