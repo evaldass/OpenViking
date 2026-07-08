@@ -47,6 +47,11 @@ class RerankConfig(BaseModel):
         ),
     )
 
+    batch_size: int = Field(
+        default=32, ge=1,
+        description="Maximum documents per rerank request; TEI candidate sets are chunked.",
+    )
+
     threshold: float = Field(
         default=0.1, description="Relevance threshold (score > threshold is relevant)"
     )
