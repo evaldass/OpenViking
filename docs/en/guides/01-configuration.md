@@ -953,6 +953,7 @@ Reranking model for search result refinement. Supports VikingDB (Volcengine), Co
     "api_base": "http://localhost:8080",
     "api_key": "optional-tei-api-key",
     "model": "BAAI/bge-reranker-v2-m3",
+    "timeout": 120,
     "batch_size": 32,
     "threshold": 0.05
   }
@@ -972,7 +973,7 @@ For TEI, `api_base` may be either the server base URL (`http://localhost:8080`) 
 | `api_key` | str | API key (for `openai` or `cohere` providers, optional for `tei`) |
 | `api_base` | str | Endpoint URL (for `openai` provider) or TEI base/rerank URL (for `tei`) |
 | `model` | str | Model name (for `openai` and `litellm`; optional label for TEI usage tracking) |
-| `timeout` | float | HTTP request timeout in seconds for OpenAI-compatible providers. Increase for slow or cold-starting local rerank servers. Default: `30.0` |
+| `timeout` | float | HTTP request timeout in seconds for OpenAI-compatible and TEI providers. Increase for slow or cold-starting local rerank servers. Default: `30.0` |
 | `max_input_tokens` | int | Maximum estimated raw-text tokens in each query-document pair sent to the reranker. Oversized inputs retain their beginning and end. `0` disables truncation. Default: `0` |
 | `batch_size` | int | Maximum number of documents sent in a single rerank provider call. TEI deployments commonly cap this at `32`; larger candidate sets are chunked. Default: `32` |
 | `threshold` | float | Score threshold between `0.0` and `1.0`; results below this are filtered out. Default: `0.1` |
