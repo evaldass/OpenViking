@@ -1039,6 +1039,7 @@ OpenAI-compatible APIs, LiteLLM, Jev, and TEI.
     "api_base": "http://localhost:8080",
     "api_key": "optional-tei-api-key",
     "model": "BAAI/bge-reranker-v2-m3",
+    "timeout": 120,
     "batch_size": 32,
     "threshold": 0.05
   }
@@ -1105,7 +1106,7 @@ parallel in one request, and scores do not compete or have to sum to 1.
 | `api_key` | str | API key (for `openai`, `cohere`, or `jev` providers) |
 | `api_base` | str | Endpoint URL (for `openai` or `jev`; Jev defaults to `https://api.typesafe.ai`, Vercel uses `https://ai-gateway.vercel.sh/typesafe`) |
 | `model` | str | Model name for OpenAI-compatible, LiteLLM, or Jev providers |
-| `timeout` | float | HTTP request timeout in seconds for HTTP rerank providers, including Jev. Default: `30.0` |
+| `timeout` | float | HTTP request timeout in seconds for HTTP rerank providers, including Jev and TEI. Default: `30.0` |
 | `max_input_tokens` | int | Maximum estimated raw-text tokens in each query-document pair sent to the reranker. Oversized inputs retain their beginning and end. `0` disables. Default: `0` |
 | `log_payloads` | bool | Log complete rerank request and response payloads. May expose query and document content. Default: `false` |
 | `batch_size` | int | Maximum documents per rerank request (default `32`); TEI candidates are chunked. |
