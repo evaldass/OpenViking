@@ -33,6 +33,7 @@ class TestTEIRerankClient:
         kwargs = mock_post.call_args.kwargs
         assert kwargs["url"] == "http://tei.local:8080/rerank"
         assert kwargs["headers"]["Authorization"] == "Bearer test-key"
+        assert kwargs["timeout"] == 30.0
         assert kwargs["json"] == {
             "query": "What is UCW?",
             "texts": ["doc A", "doc B", "doc C"],
@@ -155,6 +156,7 @@ class TestTEIRerankConfig:
             api_key="key",
             model="BAAI/bge-reranker-v2-m3",
             extra_headers={"X-Test": "1"},
+            timeout=120,
             batch_size=16,
         )
 
@@ -165,6 +167,7 @@ class TestTEIRerankConfig:
         assert client.api_key == "key"
         assert client.model_name == "BAAI/bge-reranker-v2-m3"
         assert client.extra_headers == {"X-Test": "1"}
+        assert client.timeout == 120.0
         assert client.batch_size == 16
 
     def test_config_default_batch_size_is_tei_safe(self):
