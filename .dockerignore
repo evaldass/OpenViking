@@ -14,3 +14,11 @@ web-studio/.vite
 node_modules
 *.log
 *.tmp
+
+# Additional local Python and test artifacts
+*.egg-info
+test_data
+data
+.mypy_cache
+.ruff_cache
+.DS_Store
