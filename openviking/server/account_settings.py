@@ -97,13 +97,35 @@ def _parse_account_settings(raw: bytes) -> AccountSettings:
     if not isinstance(payload, dict):
         raise InvalidArgumentError("account settings must be an object")
 
+    payload = dict(payload)
+
     # ``namespace`` was persisted by older OpenViking versions but is no longer
     # a hot-reloadable account setting. Ignore only this known legacy field so
     # upgrades can start while all other unknown fields remain rejected.
     if "namespace" in payload:
-        payload = dict(payload)
         payload.pop("namespace")
         logger.warning("Ignoring deprecated account setting field: namespace")
+
+    # ``resource_acl.auto_protect_new_content`` was renamed to ``acl.enabled``.
+    # Preserve the old behavior during upgrade instead of dropping the setting.
+    legacy_resource_acl = payload.pop("resource_acl", None)
+    if legacy_resource_acl is not None:
+        if not isinstance(legacy_resource_acl, dict):
+            raise InvalidArgumentError("resource_acl account setting must be an object")
+        unknown_fields = set(legacy_resource_acl) - {"auto_protect_new_content"}
+        if unknown_fields:
+            raise InvalidArgumentError(
+                "Unknown resource_acl account setting fields: "
+                + ", ".join(sorted(unknown_fields))
+            )
+        enabled = legacy_resource_acl.get("auto_protect_new_content", False)
+        if not isinstance(enabled, bool):
+            raise InvalidArgumentError(
+                "resource_acl.auto_protect_new_content must be a boolean"
+            )
+        if "acl" not in payload:
+            payload["acl"] = {"enabled": enabled}
+        logger.warning("Migrating deprecated account setting field: resource_acl")
 
     try:
         return AccountSettings.model_validate(payload)
