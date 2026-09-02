@@ -214,7 +214,7 @@ async def test_account_settings_update_backs_up_previous_file(fake_viking_fs):
     assert backup_payload["agent_evolution"]["enabled"] is False
 
 
-async def test_account_settings_ignore_legacy_namespace_field(fake_viking_fs):
+async def test_account_settings_migrate_legacy_fields(fake_viking_fs):
     fake_viking_fs.agfs.files[account_settings_path("default")] = json.dumps(
         {
             "namespace": {
@@ -222,7 +222,7 @@ async def test_account_settings_ignore_legacy_namespace_field(fake_viking_fs):
                 "isolate_agent_scope_by_user": False,
             },
             "agent_evolution": {"enabled": True},
-            "acl": {"enabled": True},
+            "resource_acl": {"auto_protect_new_content": True},
         }
     ).encode("utf-8")
 
