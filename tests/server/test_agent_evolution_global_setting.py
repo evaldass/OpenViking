@@ -214,6 +214,24 @@ async def test_account_settings_update_backs_up_previous_file(fake_viking_fs):
     assert backup_payload["agent_evolution"]["enabled"] is False
 
 
+async def test_account_settings_ignore_legacy_namespace_field(fake_viking_fs):
+    fake_viking_fs.agfs.files[account_settings_path("default")] = json.dumps(
+        {
+            "namespace": {
+                "isolate_user_scope_by_account": True,
+                "isolate_agent_scope_by_user": False,
+            },
+            "agent_evolution": {"enabled": True},
+            "acl": {"enabled": True},
+        }
+    ).encode("utf-8")
+
+    settings = await read_account_settings(fake_viking_fs, "default")
+
+    assert settings.agent_evolution == AccountAgentEvolutionSettings(enabled=True)
+    assert settings.acl == AccountAclSettings(enabled=True)
+
+
 async def test_account_settings_admin_api_reads_and_updates_effective_value(
     settings_http,
 ):
