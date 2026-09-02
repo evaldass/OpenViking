@@ -96,6 +96,15 @@ def _parse_account_settings(raw: bytes) -> AccountSettings:
         raise InvalidArgumentError(f"Invalid account settings JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise InvalidArgumentError("account settings must be an object")
+
+    # ``namespace`` was persisted by older OpenViking versions but is no longer
+    # a hot-reloadable account setting. Ignore only this known legacy field so
+    # upgrades can start while all other unknown fields remain rejected.
+    if "namespace" in payload:
+        payload = dict(payload)
+        payload.pop("namespace")
+        logger.warning("Ignoring deprecated account setting field: namespace")
+
     try:
         return AccountSettings.model_validate(payload)
     except Exception as exc:
