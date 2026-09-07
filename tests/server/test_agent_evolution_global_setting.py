@@ -25,6 +25,7 @@ from openviking.server.auth.plugins import DevAuthPlugin
 from openviking.server.config import AgentEvolutionConfig, ServerConfig, UserConfig
 from openviking.server.dependencies import set_service
 from openviking.server.identity import RequestContext, Role
+from openviking.service.core import OpenVikingService
 from openviking.service.session_service import SessionService
 from openviking.session import Session
 from openviking_cli.session.user_id import UserIdentifier
@@ -230,6 +231,17 @@ async def test_account_settings_migrate_legacy_fields(fake_viking_fs):
 
     assert settings.agent_evolution == AccountAgentEvolutionSettings(enabled=True)
     assert settings.acl == AccountAclSettings(enabled=True)
+
+
+async def test_acl_settings_skip_legacy_invalid_account_id(fake_viking_fs):
+    service = OpenVikingService.__new__(OpenVikingService)
+    service._viking_fs = fake_viking_fs
+    service._vikingdb_manager = fake_viking_fs
+    fake_viking_fs.acl_manager.set_enabled("legacy/account", True)
+
+    await service.load_acl_settings(["default", "legacy/account"])
+
+    assert fake_viking_fs.acl_manager.is_enabled("legacy/account") is False
 
 
 async def test_account_settings_admin_api_reads_and_updates_effective_value(
