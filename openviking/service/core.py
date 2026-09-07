@@ -220,7 +220,20 @@ class OpenVikingService:
         if self._vikingdb_manager is None or self._vikingdb_manager.acl_manager is None:
             raise NotInitializedError("ACL")
         for account_id in dict.fromkeys(account_ids):
-            settings = await read_account_settings(self._viking_fs, account_id)
+            try:
+                settings = await read_account_settings(self._viking_fs, account_id)
+            except InvalidArgumentError as exc:
+                # Older API-key stores may contain account IDs accepted before
+                # identifier validation was tightened. They cannot have a safe
+                # account-settings path, so retain the secure ACL default and
+                # continue starting instead of taking down every account.
+                self._vikingdb_manager.acl_manager.set_enabled(account_id, False)
+                logger.warning(
+                    "Skipping account settings for legacy invalid account_id %r: %s",
+                    account_id,
+                    exc,
+                )
+                continue
             self._vikingdb_manager.acl_manager.set_enabled(
                 account_id,
                 effective_acl_enabled(settings),
