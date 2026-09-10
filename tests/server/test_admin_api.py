@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 
 from openviking.pyagfs.exceptions import AGFSNotFoundError
 from openviking.server.api_keys import APIKeyManager
+from openviking.server.api_keys.models import AccountInfo
 from openviking.server.app import create_app
 from openviking.server.config import ServerConfig, UserConfig
 from openviking.server.dependencies import set_service
@@ -37,7 +38,19 @@ from openviking.service.task_store import (
     SYSTEM_TASK_USER_ID,
 )
 from openviking.service.task_tracker import get_task_tracker
-from openviking.session.memory.account_templates import EDITABLE_MEMORY_TEMPLATE_FIELDS
+from openviking.session.memory.account_templates import (
+    EDITABLE_MEMORY_TEMPLATE_FIELDS,
+    account_memory_template_path,
+    resolve_account_memory_registry,
+)
+from openviking.session.memory.extract_loop import ExtractLoop
+from openviking.session.memory.memory_isolation_handler import MemoryIsolationHandler
+from openviking.session.memory.memory_type_registry import (
+    MemoryTypeRegistry,
+    get_default_registry,
+)
+from openviking.session.memory.patch_merge_context_provider import PatchMergeContextProvider
+from openviking.session.memory.session_extract_context_provider import SessionExtractContextProvider
 from openviking_cli.exceptions import OpenVikingError
 from openviking_cli.session.user_id import UserIdentifier
 from openviking_cli.utils.config import get_openviking_config
@@ -1872,6 +1885,40 @@ async def test_delete_account(
         assert await _agfs_exists(admin_service, path) is recreated
         if recreated:
             assert manager.resolve(replacement_key).user_id == "bob"
+
+
+async def test_delete_legacy_nonconforming_account(
+    lightweight_admin_app: FastAPI,
+    lightweight_admin_client: httpx.AsyncClient,
+):
+    """ROOT can delete legacy account ids that predate account id validation."""
+    acct = "chatwoot:1"
+    manager = lightweight_admin_app.state.api_key_manager
+
+    class _DeletionService:
+        async def delete(self, account_id, *, actor):
+            del actor
+            await manager.delete_account(account_id)
+            return {"deleted": True}
+
+    lightweight_admin_app.state.deletion_service = _DeletionService()
+    manager._legacy._accounts[acct] = AccountInfo(
+        created_at="2026-03-30T08:54:32.006457+00:00",
+        users={},
+    )
+    await manager._legacy._save_accounts_json()
+    await manager._legacy._save_users_json(acct)
+
+    resp = await lightweight_admin_client.delete(
+        f"/api/v1/admin/accounts/{acct}", headers=root_headers()
+    )
+    assert resp.status_code == 202
+    assert resp.json()["result"]["deleted"] is True
+
+    resp = await lightweight_admin_client.get("/api/v1/admin/accounts", headers=root_headers())
+    accounts = resp.json()["result"]
+    account_ids = {a["account_id"] for a in accounts}
+    assert acct not in account_ids
 
 
 async def test_create_duplicate_account_fails(admin_client: httpx.AsyncClient):
