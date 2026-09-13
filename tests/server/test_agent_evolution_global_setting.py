@@ -20,8 +20,9 @@ from openviking.server.account_settings import (
     update_account_settings,
 )
 from openviking.server.agent_evolution_config import AgentEvolutionConfigProvider
+from openviking.server.api_keys import APIKeyManager
 from openviking.server.app import create_app
-from openviking.server.auth.plugins import DevAuthPlugin
+from openviking.server.auth.plugins import ApiKeyAuthPlugin
 from openviking.server.config import AgentEvolutionConfig, ServerConfig, UserConfig
 from openviking.server.dependencies import set_service
 from openviking.server.identity import RequestContext, Role
@@ -95,11 +96,19 @@ async def settings_http(fake_viking_fs, monkeypatch):
     )
     sessions = SessionService(viking_fs=fake_viking_fs)
     service = SimpleNamespace(sessions=sessions, viking_fs=fake_viking_fs)
-    app = create_app(config=ServerConfig(), service=service)
+    root_key = "settings-test-root-key-abcdef1234567890ab"
+    app = create_app(config=ServerConfig(root_api_key=root_key), service=service)
     set_service(service)
-    app.state.auth_plugin = DevAuthPlugin()
+    manager = APIKeyManager(root_key=root_key, viking_fs=fake_viking_fs)
+    await manager.load()
+    app.state.api_key_manager = manager
+    app.state.auth_plugin = ApiKeyAuthPlugin()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+        headers={"X-API-Key": root_key},
+    ) as client:
         yield client, service
 
 
