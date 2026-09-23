@@ -43,7 +43,8 @@ class RerankConfig(BaseModel):
         default=30.0,
         description=(
             "HTTP request timeout in seconds for OpenAI-compatible and TEI rerank calls. "
-            "Increase for local LLM servers with model cold-start latency."        ),
+            "Increase for local LLM servers with model cold-start latency."
+        ),
     )
 
     batch_size: int = Field(
