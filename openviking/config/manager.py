@@ -297,7 +297,17 @@ class RuntimeConfigManager(Generic[C, A]):
             if entry is not None:
                 entry.last_access = time.monotonic()
                 return
-        scope = ConfigScope.account(account_id)
+        try:
+            scope = ConfigScope.account(account_id)
+        except ValueError as exc:
+            # Legacy API-key stores may contain IDs accepted before validation
+            # tightened. Reads use safe defaults; writes remain rejected.
+            logger.warning("Skipping settings for legacy invalid account_id %r: %s", account_id, exc)
+            with self._publication_lock:
+                self._accounts[account_id] = _AccountEntry(
+                    config=self._build_account(None), last_access=time.monotonic()
+                )
+            return
         async with self._lock_for(scope):
             with self._publication_lock:
                 if account_id in self._accounts:
