@@ -1341,3 +1341,32 @@ def test_runtime_config_settings_ignores_unknown_field():
     settings = RuntimeConfigSettings(bogus=1)
 
     assert settings == RuntimeConfigSettings()
+
+
+@pytest.mark.asyncio
+async def test_legacy_account_settings_and_invalid_id_are_safe_on_read():
+    from openviking.config.binding import _build_account, manager_over_source
+    from openviking_cli.utils.config import set_openviking_config
+    from openviking_cli.utils.config.open_viking_config import (
+        OpenVikingConfig,
+        OpenVikingConfigSingleton,
+    )
+
+    legacy = {"namespace": {"name": "old"}, "resource_acl": {"auto_protect_new_content": True}}
+    assert _build_account(legacy).acl.enabled is True
+    assert _build_account({**legacy, "acl": {"enabled": False}}).acl.enabled is False
+    with pytest.raises(ValueError, match="boolean"):
+        _build_account({"resource_acl": {"auto_protect_new_content": "true"}})
+
+    source = MemoryConfigSource()
+    base = OpenVikingConfig.from_dict({})
+    set_openviking_config(base)
+    manager = manager_over_source(source, base_config=base)
+    try:
+        await manager.initialize()
+        assert await manager.get_account("chatwoot:1", "acl") is None
+        with pytest.raises(ValueError):
+            await manager.patch_account("chatwoot:1", {"acl": {"enabled": True}})
+        assert await manager.get_account("chatwoot:1", "acl") is None
+    finally:
+        OpenVikingConfigSingleton.reset_instance()
