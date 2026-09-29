@@ -1370,3 +1370,24 @@ async def test_legacy_account_settings_and_invalid_id_are_safe_on_read():
         assert await manager.get_account("chatwoot:1", "acl") is None
     finally:
         OpenVikingConfigSingleton.reset_instance()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.asyncio
+async def test_persisted_legacy_account_acl_load_preserves_effective_value(enabled):
+    from openviking.config.binding import manager_over_source
+    from openviking_cli.utils.config.open_viking_config import OpenVikingConfig
+
+    source = MemoryConfigSource()
+    settings = {
+        "namespace": {"name": "legacy"},
+        "resource_acl": {"auto_protect_new_content": enabled},
+    }
+    await source.update(ConfigScope.account("legacy-account"), lambda _: settings)
+    manager = manager_over_source(source, base_config=OpenVikingConfig.from_dict({}))
+    await manager.initialize()
+    acl = await manager.get_account("legacy-account", "acl")
+    assert acl.enabled is enabled
+    # Reads must not rewrite persisted data or affect other accounts.
+    assert await source.load(ConfigScope.account("legacy-account")) == settings
+    assert await manager.get_account("another-account", "acl") is None
