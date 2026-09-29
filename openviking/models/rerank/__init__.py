@@ -9,7 +9,8 @@ Provides rerank functionality for hierarchical retrieval with multiple provider 
 - litellm: LiteLLM rerank (supports multiple providers)
 - openai: OpenAI-compatible rerank API
 - jev: Jev (TypeSafe System One) rerank
-- tei: Hugging Face Text Embeddings Inference rerank API"""
+- tei: Hugging Face Text Embeddings Inference rerank API
+"""
 
 from openviking.models.rerank.base import RerankBase
 from openviking.models.rerank.cohere_rerank import CohereRerankClient
