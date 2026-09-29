@@ -1126,9 +1126,9 @@ For TEI, `api_base` accepts the server base URL or full `/rerank` endpoint. Auth
 | `ak` | str | VikingDB Access Key (vikingdb provider only) |
 | `sk` | str | VikingDB Secret Key (vikingdb provider only) |
 | `model_name` | str | Model name (vikingdb provider only, default: `doubao-seed-rerank`) |
-| `api_key` | str | API key (for `openai`, `cohere`, or `jev` providers) |
-| `api_base` | str | Endpoint URL (for `openai` or `jev`; Jev defaults to `https://api.typesafe.ai`, Vercel uses `https://ai-gateway.vercel.sh/typesafe`) |
-| `model` | str | Model name for OpenAI-compatible, LiteLLM, or Jev providers |
+| `api_key` | str | API key (for `openai`, `cohere`, or `jev`; optional for `tei`) |
+| `api_base` | str | Endpoint URL (required for `openai` and `tei`; Jev defaults to `https://api.typesafe.ai`, Vercel uses `https://ai-gateway.vercel.sh/typesafe`) |
+| `model` | str | Model name for OpenAI-compatible, LiteLLM, or Jev providers; optional usage label for TEI |
 | `mode` | `"noul"`, `"choice"`, or `null` | Jev rerank mode. `null` and omission use `"noul"` |
 | `timeout` | float | HTTP request timeout in seconds for HTTP rerank providers, including Jev and TEI. Default: `30.0` |
 | `max_input_tokens` | int | Maximum estimated raw-text tokens in each query-document pair sent to the reranker. Oversized inputs retain their beginning and end. `0` disables. Default: `0` |
@@ -2161,7 +2161,7 @@ This illustrates the main sections, not a complete runnable configuration or JSO
     "extra_request_body": {}
   },
   "rerank": {
-    "provider": "vikingdb|cohere|openai|litellm|jev",
+    "provider": "vikingdb|cohere|openai|litellm|jev|tei",
     "api_key": "string",
     "model": "string",
     "api_base": "string",
