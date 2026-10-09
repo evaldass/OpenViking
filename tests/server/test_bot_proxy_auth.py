@@ -618,7 +618,16 @@ async def test_compile_api_client_session_protocol_retry_and_cancellation(
         include_events=False,
         _ctx=ctx,
     )
-    assert queried.result == (await state(first)).to_dict()
+    # Processing duration is sampled on each read while the task is running.
+    # Compare the stable payload and assert monotonic, non-negative duration.
+    latest = (await state(first)).to_dict()
+    queried_seconds = queried.result["processing_seconds"]
+    latest_seconds = latest["processing_seconds"]
+    assert queried_seconds is not None and queried_seconds >= 0
+    assert latest_seconds is not None and latest_seconds >= queried_seconds
+    assert {k: v for k, v in queried.result.items() if k != "processing_seconds"} == {
+        k: v for k, v in latest.items() if k != "processing_seconds"
+    }
     assert queried.result["meta"]["request"].get("args", {}) == public_args
 
     await queue.dequeue()  # Same target rotates, including across users.
