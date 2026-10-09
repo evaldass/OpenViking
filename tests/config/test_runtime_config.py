@@ -1374,7 +1374,7 @@ async def test_legacy_account_settings_and_invalid_id_are_safe_on_read():
 
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.asyncio
-async def test_persisted_legacy_account_acl_load_preserves_effective_value(enabled):
+async def test_persisted_legacy_account_acl_load_preserves_effective_value(enabled, monkeypatch):
     from openviking.config.binding import manager_over_source
     from openviking_cli.utils.config.open_viking_config import OpenVikingConfig
 
@@ -1384,6 +1384,10 @@ async def test_persisted_legacy_account_acl_load_preserves_effective_value(enabl
         "resource_acl": {"auto_protect_new_content": enabled},
     }
     await source.update(ConfigScope.account("legacy-account"), lambda _: settings)
+    # Cluster publication changes the process singleton; restore it after this probe.
+    from openviking_cli.utils.config.open_viking_config import OpenVikingConfigSingleton
+
+    monkeypatch.setattr(OpenVikingConfigSingleton, "_instance", OpenVikingConfigSingleton._instance)
     manager = manager_over_source(source, base_config=OpenVikingConfig.from_dict({}))
     await manager.initialize()
     acl = await manager.get_account("legacy-account", "acl")
