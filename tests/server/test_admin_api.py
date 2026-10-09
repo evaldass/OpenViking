@@ -1958,6 +1958,7 @@ async def test_user_memory_policy_can_be_initialized_and_hot_updated(
         "peer": {"enabled": True},
         "working_memory": {"enabled": False},
         "memory_types": ["profile"],
+        "working_memory": {"enabled": False},
     }
 
     patch_settings = await lightweight_admin_client.patch(
@@ -2010,6 +2011,7 @@ async def test_user_memory_policy_can_be_initialized_and_hot_updated(
         "peer": {"enabled": True},
         "working_memory": {"enabled": False},
         "memory_types": ["events"],
+        "working_memory": {"enabled": False},
     }
 
     persisted = await read_user_config(viking_fs, user_ctx)
@@ -2047,6 +2049,7 @@ async def test_user_memory_policy_uses_server_default_without_user_override(
         "peer": {"enabled": True},
         "working_memory": {"enabled": False},
         "memory_types": ["profile"],
+        "working_memory": {"enabled": False},
     }
 
 
