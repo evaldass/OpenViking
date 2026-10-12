@@ -213,6 +213,7 @@ def test_server_default_memory_policy_is_configured_on_session_service(
     assert sessions._default_user_memory_policy == {
         "self": {"enabled": True},
         "peer": {"enabled": True},
+        "working_memory": {"enabled": False},
         "memory_types": ["profile"],
     }
 

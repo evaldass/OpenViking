@@ -2410,7 +2410,7 @@ async def test_delete_legacy_nonconforming_account(
         created_at="2026-03-30T08:54:32.006457+00:00",
         users={},
     )
-    await manager._store._save_accounts_json()
+    await manager._store._save_accounts_json(updated_account_ids={acct})
     await manager._store._save_users_json(acct)
 
     resp = await lightweight_admin_client.delete(
