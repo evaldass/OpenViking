@@ -19,6 +19,18 @@ from openviking_cli.utils.config.open_viking_config import OpenVikingConfigSingl
 from openviking_cli.utils.config.storage_config import StorageConfig
 
 
+@pytest.fixture(autouse=True)
+def restore_config_environment(monkeypatch):
+    """bootstrap.main writes worker config paths directly into os.environ."""
+    import os
+
+    key = "OPENVIKING_CONFIG_FILE"
+    if key in os.environ:
+        monkeypatch.setenv(key, os.environ[key])
+    else:
+        monkeypatch.delenv(key, raising=False)
+
+
 def test_main_keeps_config_host_when_cli_host_is_omitted(monkeypatch):
     config = ServerConfig(host="127.0.0.1", port=1933)
     captured: dict[str, object] = {}
