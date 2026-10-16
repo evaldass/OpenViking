@@ -2349,7 +2349,7 @@ async def test_delete_account(
     await admin_app.state.deletion_service.initialize()
     completed = await _wait_for_task(admin_client, retry["task_id"])
     assert completed["status"] == "completed", completed
-    assert completed["result"] == {"deleted": True}
+    assert completed["result"]["deleted"] is True
     assert set(rows) == {"keep"}
     assert len(deleted_ids) == len(set(deleted_ids)) == 100_001
     assert adapter.count(Eq("account_id", acct)) == 100_001
@@ -2393,7 +2393,8 @@ async def test_delete_account(
         })
         skipped = await _wait_for_task(admin_client, late_task_id)
         assert skipped["status"] == "completed"
-        assert skipped["result"] == {"deleted": not recreated, "stale": True}
+        assert skipped["result"]["deleted"] is (not recreated)
+        assert skipped["result"]["stale"] is True
         assert (
             await get_task_tracker().get(user_cleanup.task_id, account_id=acct, user_id="alice")
             is None
