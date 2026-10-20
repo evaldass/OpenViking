@@ -286,7 +286,9 @@ async def test_ready_returns_200_after_initialized(monkeypatch):
     )
     monkeypatch.setattr(
         "openviking_cli.utils.config.open_viking_config.OpenVikingConfigSingleton.get_instance",
-        lambda: SimpleNamespace(embedding=SimpleNamespace(get_embedder=lambda: None)),
+        lambda: SimpleNamespace(
+            service_name="openviking", embedding=SimpleNamespace(get_embedder=lambda: None)
+        ),
     )
 
     app = create_app(config=ServerConfig(), service=service)
