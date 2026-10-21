@@ -302,7 +302,9 @@ class RuntimeConfigManager(Generic[C, A]):
         except ValueError as exc:
             # Legacy API-key stores may contain IDs accepted before validation
             # tightened. Reads use safe defaults; writes remain rejected.
-            logger.warning("Skipping settings for legacy invalid account_id %r: %s", account_id, exc)
+            logger.warning(
+                "Skipping settings for legacy invalid account_id %r: %s", account_id, exc
+            )
             with self._publication_lock:
                 self._accounts[account_id] = _AccountEntry(
                     config=self._build_account(None), last_access=time.monotonic()
