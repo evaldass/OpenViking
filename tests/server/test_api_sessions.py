@@ -170,20 +170,35 @@ async def test_get_session(client: httpx.AsyncClient):
     assert body["result"]["uri"] == session_uri
 
 
-async def test_legacy_session_uri_alias_reads_current_user_session(client: httpx.AsyncClient):
+async def test_legacy_session_uri_alias_reads_current_user_session(
+    app: FastAPI, client: httpx.AsyncClient
+):
+    from openviking.server.auth import get_request_context
+
     session_id = "legacy-alias-read"
     await client.post("/api/v1/sessions", json={"session_id": session_id})
     await client.post(
         f"/api/v1/sessions/{session_id}/messages",
         json=_message_request("user", content="legacy alias message"),
     )
+    legacy_uri = f"viking://session/{session_id}/messages.jsonl"
 
-    resp = await client.get(
-        "/api/v1/content/read",
-        params={"uri": f"viking://session/{session_id}/messages.jsonl"},
+    # The dev client is ROOT. ROOT has no implicit user scope, so the
+    # uid-less legacy alias must fail closed instead of guessing a user.
+    root_resp = await client.get("/api/v1/content/read", params={"uri": legacy_uri})
+    assert root_resp.status_code == 400, root_resp.text
+    assert root_resp.json()["error"]["code"] == "INVALID_URI"
+
+    # A user-scoped caller resolves the alias to its own canonical session.
+    app.dependency_overrides[get_request_context] = lambda: RequestContext(
+        user=DEFAULT_USER, role=Role.USER
     )
+    try:
+        resp = await client.get("/api/v1/content/read", params={"uri": legacy_uri})
+    finally:
+        app.dependency_overrides.pop(get_request_context, None)
 
-    assert resp.status_code == 200
+    assert resp.status_code == 200, resp.text
     assert "legacy alias message" in resp.json()["result"]
 
 

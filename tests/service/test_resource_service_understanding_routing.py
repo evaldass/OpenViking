@@ -101,6 +101,8 @@ async def test_extensionless_remote_url_queues_frozen_understanding_route(
         "status": "success",
         "root_uri": "viking://resources/manual",
         "task_id": "task-1",
+        # wait=False responses echo the caller's source (#4589 contract).
+        "source_path": "https://example.com/download?id=1",
     }
     _, message = queue_manager.enqueue.await_args.args
     assert queue_manager.enqueue.await_args.args[0] == QueueManager.EXTERNAL_PARSE
@@ -194,6 +196,7 @@ async def test_remote_mpeg_ts_url_queues_understanding_after_prepare(
         "status": "success",
         "root_uri": "viking://resources/video/sample",
         "task_id": "task-1",
+        "source_path": "https://example.com/video/sample.ts?sign=1",
     }
     processor.prepare_durable_source.assert_awaited_once()
     processor.process_resource.assert_not_awaited()
@@ -297,7 +300,10 @@ async def test_temp_uploaded_file_queues_external_parse_with_file_id(
         "status": "success",
         "root_uri": "viking://resources/audio",
         "task_id": "task-1",
+        # Uploads echo only the client-facing file name, never the server temp path.
+        "source_path": "audio.m4a",
     }
+    assert str(tmp_path) not in result["source_path"]
     _, message = queue_manager.enqueue.await_args.args
     assert queue_manager.enqueue.await_args.args[0] == QueueManager.EXTERNAL_PARSE
     queued = AddResourceMsg.from_dict(message)
