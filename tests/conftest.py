@@ -149,6 +149,22 @@ async def service(
 
     monkeypatch.setattr(EmbeddingConfig, "get_embedder", lambda self: FakeEmbedder())
     mock_agfs = MockLocalAGFS(root_path=test_data_dir / "mock_agfs_root")
+    # This filesystem-only double cannot dequeue ContentWrite startup jobs.
+    # Seed immutable packaged inputs, leaving real reconciliation enabled.
+    from openviking.system_assets import SYSTEM_ASSETS_DIR
+    from openviking.system_assets.sync import _MANAGED_ASSET_ROOTS
+
+    account_id = UserIdentifier.the_default_user().account_id
+    for relative_root, target_root in _MANAGED_ASSET_ROOTS:
+        source_root = SYSTEM_ASSETS_DIR / relative_root
+        for source in source_root.rglob("*"):
+            if source.is_file():
+                target = mock_agfs._resolve(
+                    f"/local/{account_id}/{target_root.removeprefix('viking://')}/"
+                    f"{source.relative_to(source_root).as_posix()}"
+                )
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(source.read_bytes())
     monkeypatch.setattr(
         "openviking.utils.agfs_utils.create_agfs_client",
         lambda *args, **kwargs: mock_agfs,
