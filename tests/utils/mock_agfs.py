@@ -23,6 +23,22 @@ class MockLocalAGFS:
         self._pathlocks = {}
         self._pathlock_leases = {}
 
+    def seed_system_assets(self, account_id="default"):
+        """Seed immutable startup inputs for this filesystem-only queue double."""
+        from openviking.system_assets import SYSTEM_ASSETS_DIR
+        from openviking.system_assets.sync import _MANAGED_ASSET_ROOTS
+
+        for relative_root, target_root in _MANAGED_ASSET_ROOTS:
+            source_root = SYSTEM_ASSETS_DIR / relative_root
+            for source in source_root.rglob("*"):
+                if source.is_file():
+                    target = self._resolve(
+                        f"/local/{account_id}/{target_root.removeprefix('viking://')}/"
+                        f"{source.relative_to(source_root).as_posix()}"
+                    )
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(source.read_bytes())
+
     def _resolve(self, path):
         if str(path).startswith("viking://"):
             path = str(path).replace("viking://", "")

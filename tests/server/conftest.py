@@ -73,7 +73,11 @@ def _install_fake_embedder(monkeypatch):
 def _install_fake_vlm(monkeypatch):
     """Use a fake VLM so server tests never hit external LLM APIs."""
 
-    async def _fake_get_completion(self, prompt, thinking=False):
+    async def _fake_get_completion(self, prompt="", thinking=False, **kwargs):
+        if kwargs.get("messages") is not None:
+            from openviking.models.vlm.base import VLMResponse
+
+            return VLMResponse(content="sdk.commit()")
         if "extract user-private configuration items" in prompt:
             return '{"values": {"api_key": "secret-xyz", "base_url": "https://example.com"}}'
         return "# Test Summary\n\nFake summary for testing.\n\n## Details\nTest content."
@@ -93,13 +97,10 @@ def _install_session_commit_queue_fallback(service: OpenVikingService, monkeypat
     queued_commit_tasks: set[str] = set()
     tracker = get_task_tracker()
     original_has_work = tracker.has_work
-    monkeypatch.setattr(
-        tracker,
-        "has_work",
-        lambda task_id, **kwargs: (
-            task_id in queued_commit_tasks or original_has_work(task_id, **kwargs)
-        ),
-    )
+    async def has_work(task_id, **kwargs):
+        return task_id in queued_commit_tasks or await original_has_work(task_id, **kwargs)
+
+    monkeypatch.setattr(tracker, "has_work", has_work)
 
     async def enqueue_with_session_commit_fallback(queue_name, data):
         if queue_name != QueueManager.SESSION_COMMIT:

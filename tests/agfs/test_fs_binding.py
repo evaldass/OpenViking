@@ -8,13 +8,17 @@ without HTTP server.
 """
 
 import asyncio
+import json
 import os
 import shutil
+import subprocess
+import sys
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
+from openviking.storage.errors import LockAcquisitionError
 from openviking.storage.viking_fs import init_viking_fs
 from openviking.utils.resource_processor import ResourceProcessor
 from openviking_cli.utils.config.agfs_config import AGFSConfig
@@ -266,7 +270,7 @@ class TestVikingFSBindingLocal:
         adopted = None
 
         try:
-            with pytest.raises(ValueError):
+            with pytest.raises(LockAcquisitionError, match="does not match the local lease"):
                 adopted = await vfs._async_agfs.pathlock_adopt(handoff)
         finally:
             if adopted is not None:
@@ -279,22 +283,31 @@ class TestVikingFSBindingLocal:
         """Accept legacy durable handoffs that use handle_id instead of owner_id."""
         vfs = viking_fs_binding_instance
         path = f"/local/default/temp/handoff_legacy_{uuid.uuid4().hex}.txt"
-        owned = await vfs._async_agfs.pathlock_acquire_exact(path)
-        handoff = await vfs._async_agfs.pathlock_to_handoff(owned)
-        legacy_handoff = {
-            "handle_id": handoff["owner_id"],
-            "lock_paths": handoff["lock_paths"],
-        }
-        adopted = None
-
+        # A durable legacy payload is consumed after the producer process exits,
+        # not while the same process still owns a live registry capability.
+        script = """
+import json,os,sys
+from openviking.utils.agfs_utils import RagfsBindingConfig,create_agfs_client
+from openviking_cli.utils.config.agfs_config import AGFSConfig
+client=create_agfs_client(RagfsBindingConfig(agfs=AGFSConfig(path=sys.argv[1],backend="local")))
+owned=client.pathlock_acquire_exact(None,sys.argv[2])
+handoff=client.pathlock_to_handoff(None,owned)
+client.pathlock_handoff(None,owned)
+print(json.dumps({"handle_id":handoff["owner_id"],"lock_paths":handoff["lock_paths"]}),flush=True)
+os._exit(0)
+"""
+        producer = await asyncio.to_thread(
+            subprocess.run,
+            [sys.executable, "-c", script, AGFS_CONF.path, path],
+            capture_output=True, text=True, check=True, timeout=30,
+        )
+        legacy_handoff = json.loads(producer.stdout.strip().splitlines()[-1])
+        adopted = await vfs._async_agfs.pathlock_adopt(legacy_handoff)
         try:
-            adopted = await vfs._async_agfs.pathlock_adopt(legacy_handoff)
-            assert adopted["owner_id"] == owned["owner_id"]
+            assert adopted["owner_id"] == legacy_handoff["handle_id"]
             assert adopted["owned"] is True
         finally:
-            if adopted is not None:
-                await vfs._async_agfs.pathlock_release(adopted)
-            await vfs._async_agfs.pathlock_release(owned)
+            await vfs._async_agfs.pathlock_release(adopted)
 
     async def test_pathlock_wait_and_cancel_release_resources(self, viking_fs_binding_instance):
         """Lock waits leave storage responsive; cancelled acquisitions release their lease."""
