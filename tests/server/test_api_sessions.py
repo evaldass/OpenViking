@@ -77,6 +77,7 @@ def _configure_test_env(monkeypatch, tmp_path):
     )
 
     mock_agfs = MockLocalAGFS(root_path=tmp_path / "mock_agfs_root")
+    mock_agfs.seed_system_assets(DEFAULT_USER.account_id)
 
     monkeypatch.setenv(OPENVIKING_CONFIG_ENV, str(config_path))
     OpenVikingConfigSingleton.reset_instance()
@@ -425,6 +426,8 @@ async def test_get_session_context_includes_incomplete_archive_messages(
     )
     commit_resp = await client.post(f"/api/v1/sessions/{session_id}/commit")
     assert commit_resp.status_code == 200
+    committed = await _wait_for_task(client, commit_resp.json()["result"]["task_id"])
+    assert committed["status"] == "completed"
 
     ctx = RequestContext(user=UserIdentifier.the_default_user(), role=Role.ROOT)
     session = service.sessions.session(ctx, session_id)
@@ -484,6 +487,8 @@ async def test_get_session_context_stops_at_newest_failed_archive(
     )
     commit_resp = await client.post(f"/api/v1/sessions/{session_id}/commit")
     assert commit_resp.status_code == 200
+    committed = await _wait_for_task(client, commit_resp.json()["result"]["task_id"])
+    assert committed["status"] == "completed"
 
     ctx = RequestContext(user=UserIdentifier.the_default_user(), role=Role.ROOT)
     session = service.sessions.session(ctx, session_id)
@@ -820,6 +825,7 @@ async def test_patch_session_config_is_not_supported(client: httpx.AsyncClient):
 
 async def test_session_load_recovers_message_count_from_live_messages(service):
     ctx = RequestContext(user=UserIdentifier("acct_a", "user_b"), role=Role.ADMIN)
+    service._agfs_client.seed_system_assets(ctx.account_id)
     await service.initialize_account_directories(ctx)
     await service.initialize_user_directories(ctx)
 

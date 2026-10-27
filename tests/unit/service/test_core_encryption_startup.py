@@ -30,7 +30,7 @@ class _FakeConfig:
             backend="local",
             cachefs=SimpleNamespace(backend="local"),
             pathlock=SimpleNamespace(
-                model_dump=lambda mode: {
+                model_dump=lambda mode, exclude_none=False: {
                     "provider": "filesystem",
                     "lock_timeout_secs": 0.0,
                     "lock_expire_secs": 30.0,
@@ -79,11 +79,11 @@ async def test_build_ragfs_binding_config_works_inside_running_event_loop(monkey
     assert isinstance(ragfs_config, RagfsBindingConfig)
     assert ragfs_config.agfs is service._config.storage.agfs
     assert ragfs_config.to_binding_dict() == {
+        "service_name": "openviking-server",
         "cache": {
             "enabled": False,
             "runtime_enabled": False,
             "provider": "redis",
-            "namespace": "openviking",
             "max_file_size_bytes": 1024 * 1024,
             "traversal_mode": "backend",
             "bypass_prefixes": [],
@@ -220,6 +220,8 @@ async def test_close_releases_data_dir_lock_after_successful_cleanup(monkeypatch
     service._resource_service = _ResourceService()
     service._config = SimpleNamespace(vlm=VLMConfig())
     service._runtime_config_manager = None
+    service._compile_scheduler = None
+    service._expiry_runtime = None
     service._watch_scheduler = None
     service._session_auto_commit_scheduler = None
     service._queue_manager = None
@@ -229,7 +231,12 @@ async def test_close_releases_data_dir_lock_after_successful_cleanup(monkeypatch
     service._initialized = True
     monkeypatch.setattr(service, "_release_data_dir_lock", lambda: released.append(True))
 
+    from unittest.mock import AsyncMock
+
+    tracker = SimpleNamespace(close=AsyncMock())
+    monkeypatch.setattr("openviking.service.core.get_task_tracker", lambda: tracker)
     await service.close()
+    tracker.close.assert_awaited_once()
 
     assert service._initialized is False
     assert released == [True]
