@@ -33,6 +33,7 @@ class TEIRerankClient(RerankBase):
         api_key: Optional[str] = None,
         model_name: Optional[str] = None,
         extra_headers: Optional[Dict[str, str]] = None,
+        timeout: float = 30.0,
         batch_size: int = 32,
     ) -> None:
         """
@@ -43,6 +44,7 @@ class TEIRerankClient(RerankBase):
             api_key: Optional Bearer token for TEI deployments that enforce auth.
             model_name: Optional model name used for usage tracking.
             extra_headers: Optional extra headers for API requests.
+            timeout: HTTP request timeout in seconds.
             batch_size: Maximum number of documents to send per TEI request.
         """
         super().__init__()
@@ -50,6 +52,7 @@ class TEIRerankClient(RerankBase):
         self.api_key = api_key
         self.model_name = model_name
         self.extra_headers = extra_headers or {}
+        self.timeout = float(timeout)
         self.batch_size = max(1, int(batch_size))
         self.provider = "tei"
 
@@ -112,7 +115,7 @@ class TEIRerankClient(RerankBase):
                 url=self.rerank_url,
                 headers=headers,
                 json=req_body,
-                timeout=30,
+                timeout=self.timeout,
             )
             response.raise_for_status()
             result = response.json()
@@ -174,5 +177,6 @@ class TEIRerankClient(RerankBase):
             api_key=config.api_key,
             model_name=config.model,
             extra_headers=config.extra_headers,
+            timeout=config.timeout,
             batch_size=config.batch_size,
         )
