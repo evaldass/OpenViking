@@ -25,10 +25,10 @@ class MockLocalAGFS:
 
     def seed_system_assets(self, account_id="default"):
         """Seed immutable startup inputs for this filesystem-only queue double."""
+        from openviking.core.namespace_constants import SYSTEM_ASSET_ROOT_MAPPINGS
         from openviking.system_assets import SYSTEM_ASSETS_DIR
-        from openviking.system_assets.sync import _MANAGED_ASSET_ROOTS
 
-        for relative_root, target_root in _MANAGED_ASSET_ROOTS:
+        for relative_root, target_root in SYSTEM_ASSET_ROOT_MAPPINGS:
             source_root = SYSTEM_ASSETS_DIR / relative_root
             for source in source_root.rglob("*"):
                 if source.is_file():
