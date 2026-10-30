@@ -1280,7 +1280,7 @@ For TEI, `api_base` accepts the server base URL or full `/rerank` endpoint. Auth
 | `model` | str | Model name for OpenAI-compatible, LiteLLM, or Jev providers |
 | `mode` | `"noul"`, `"choice"`, or `null` | Jev rerank mode. `null` and omission use `"noul"` |
 | `candidates_visible` | bool | Jev Noul only. Default: `false`, isolating each candidate in its own question. Explicit `true` shares candidates in state. Choice ignores this option. |
-| `timeout` | float | HTTP request timeout in seconds for HTTP rerank providers, including Jev. Default: `30.0` |
+| `timeout` | float | HTTP request timeout in seconds for HTTP rerank providers, including Jev and TEI. Default: `30.0` |
 | `max_input_tokens` | int | Maximum estimated raw-text tokens in each query-document pair sent to the reranker. Oversized inputs retain their beginning and end. `0` disables. Default: `0` |
 | `log_payloads` | bool | Log complete rerank request and response payloads. May expose query and document content. Default: `false` |
 | `batch_size` | int | Maximum documents per rerank request (default `32`); TEI candidates are chunked. |
