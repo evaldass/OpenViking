@@ -3,6 +3,7 @@
 
 """Unindexed deletion avoids vector work while retaining storage safety checks."""
 
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -327,9 +328,15 @@ async def test_resource_rm_authorizes_the_whole_subtree_at_its_root(storage, all
             await service._rm(RESOURCE_URI, ctx=storage.ctx, recursive=True)
         storage.agfs.rm.assert_not_awaited()
         storage.vector.delete_uris.assert_not_awaited()
-    else:
+    if allowed:
         storage.vector.count.assert_awaited_once()
         storage.vector.delete_uris.assert_awaited_once_with(
-            storage.ctx, [RESOURCE_URI], recursive=True
+            replace(storage.ctx, bypass_acl=True), [RESOURCE_URI], recursive=True
         )
-    storage.agfs.pathlock_release.assert_awaited_once_with(storage.lease)
+        storage.agfs.pathlock_release.assert_awaited_once_with(storage.lease)
+    else:
+        storage.vector.count.assert_not_awaited()
+        storage.agfs.pathlock_release.assert_not_awaited()
+        storage.agfs.pathlock_acquire_tree.assert_not_awaited()
+        storage.agfs.pathlock_acquire_exact.assert_not_awaited()
+    storage.acl.resolve_many.assert_awaited_once_with([RESOURCE_URI], storage.ctx)
