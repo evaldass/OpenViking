@@ -63,6 +63,7 @@ def test_service_passes_queue_worker_concurrency_to_storage(monkeypatch) -> None
 
     assert storage_calls[0][1]["max_concurrent_external_parse"] == 9
     assert storage_calls[0][1]["max_concurrent_add_resource"] == 7
+    assert storage_calls[0][1]["max_concurrent_reindex"] == 4
     assert storage_calls[0][1]["max_concurrent_session_commit"] == 5
     assert storage_calls[0][1]["max_concurrent_external_task"] == 6
 

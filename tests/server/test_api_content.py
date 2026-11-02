@@ -228,8 +228,8 @@ async def test_read_content(client, service, monkeypatch):
 
     monkeypatch.setattr(
         service.viking_fs,
-        "read_file",
-        AsyncMock(side_effect=[PermissionDeniedError("denied"), "legacy content"]),
+        "read_file_bytes",
+        AsyncMock(side_effect=[PermissionDeniedError("denied"), b"legacy content"]),
     )
     resp = await client.get("/api/v1/content/read", params={"uri": encoded_uri})
     assert resp.status_code == 403
