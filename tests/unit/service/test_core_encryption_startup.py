@@ -221,6 +221,7 @@ async def test_close_releases_data_dir_lock_after_successful_cleanup(monkeypatch
     service._config = SimpleNamespace(vlm=VLMConfig())
     service._runtime_config_manager = None
     service._compile_scheduler = None
+    service._ttl_adapter = None
     service._expiry_runtime = None
     service._watch_scheduler = None
     service._session_auto_commit_scheduler = None

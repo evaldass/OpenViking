@@ -16,6 +16,7 @@ from openviking_gateway.config import EmbeddedGatewayConfig
 
 def openviking_config(gateway, encryption=None, workspace="./data"):
     return SimpleNamespace(
+        service_name="openviking-server",
         gateway=gateway,
         storage=SimpleNamespace(workspace=workspace),
         encryption=encryption or EncryptionConfig(),
