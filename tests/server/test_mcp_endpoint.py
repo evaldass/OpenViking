@@ -7,6 +7,7 @@ Tests the tool functions directly by setting up the identity contextvar
 and service dependency, avoiding MCP protocol complexity.
 """
 
+import asyncio
 import base64
 import json
 import re
@@ -49,7 +50,6 @@ from openviking.server.mcp_endpoint import (
 from openviking.server.mcp_endpoint import ls as list_tool
 from openviking.service.fs_service import ListingPage
 from openviking_cli.exceptions import (
-    FailedPreconditionError,
     InvalidArgumentError,
     InvalidURIError,
     NotFoundError,
@@ -357,9 +357,16 @@ async def test_health_returns_unhealthy_when_no_service(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-async def test_search_no_results(service):
+async def test_search_no_results(service, monkeypatch):
+    # Constant fake embeddings also match packaged immutable startup assets.
+    # Supply an empty service result to exercise the MCP empty-result contract.
+    empty_search = AsyncMock(return_value=SimpleNamespace(memories=[], resources=[], skills=[]))
+    monkeypatch.setattr(service.search, "search", empty_search)
     result = await search(query="zzz_nonexistent_query_xyz_12345")
     assert result == "No matching context found."
+    empty_search.assert_awaited_once()
+    assert empty_search.await_args.kwargs["query"] == "zzz_nonexistent_query_xyz_12345"
+    assert empty_search.await_args.kwargs["ctx"] == DEFAULT_CTX
 
 
 async def test_search_returns_formatted_results(service, client_with_resource):
@@ -2319,8 +2326,9 @@ async def test_forget_directory_without_recursive_fails(service):
     await service.viking_fs.mkdir(dir_uri, ctx=ctx, exist_ok=True)
     await service.viking_fs.write(child_uri, "child data", ctx=ctx)
 
-    with pytest.raises(FailedPreconditionError):
+    with pytest.raises(InvalidArgumentError, match="--recursive"):
         await forget(uri=dir_uri)
+    assert await service.fs.read(child_uri, ctx=ctx) == "child data"
 
 
 async def test_forget_directory_with_recursive_succeeds(service):
@@ -2393,6 +2401,7 @@ async def test_write_creates_new_file_with_replace_default(service):
 async def test_write_replace_overwrites_existing(service):
     uri = "viking://resources/test_write_replace.md"
     await write(uri=uri, content="v1")
+    await asyncio.wait_for(service.resources.wait_processed(), timeout=30)
     result = await write(uri=uri, content="v2-content")
     assert "mode=replace" in result
     body = await service.fs.read(uri, ctx=DEFAULT_CTX)
@@ -2402,6 +2411,7 @@ async def test_write_replace_overwrites_existing(service):
 async def test_write_create_overwrites_existing_file(service):
     uri = "viking://resources/test_write_create_exists.md"
     await write(uri=uri, content="v1")
+    await asyncio.wait_for(service.resources.wait_processed(), timeout=30)
     result = await write(uri=uri, content="v2", mode="create")
     assert "mode=create" in result
     assert await service.fs.read(uri, ctx=DEFAULT_CTX) == "v2"
@@ -2410,7 +2420,9 @@ async def test_write_create_overwrites_existing_file(service):
 async def test_write_append_appends_to_existing(service):
     uri = "viking://resources/test_write_append.md"
     await write(uri=uri, content="line1\n")
+    await asyncio.wait_for(service.resources.wait_processed(), timeout=30)
     await write(uri=uri, content="line2\n", mode="append")
+    await asyncio.wait_for(service.resources.wait_processed(), timeout=30)
     body = await service.fs.read(uri, ctx=DEFAULT_CTX)
     assert body == "line1\nline2\n"
 
@@ -2443,6 +2455,7 @@ async def test_write_read_tool_roundtrip(service):
 async def test_edit_replaces_unique_occurrence(service):
     uri = "viking://resources/test_edit.md"
     await write(uri=uri, content="alpha\nbeta\ngamma\n")
+    await asyncio.wait_for(service.resources.wait_processed(), timeout=30)
     result = await edit(uri=uri, old_string="beta", new_string="BETA")
     assert "Edited" in result
     body = await service.fs.read(uri, ctx=DEFAULT_CTX)
@@ -2452,8 +2465,11 @@ async def test_edit_replaces_unique_occurrence(service):
 async def test_edit_sequential_edits_compose(service):
     uri = "viking://resources/test_edit_order.md"
     await write(uri=uri, content="foo bar baz\n")
+    await asyncio.wait_for(service.resources.wait_processed(), timeout=30)
     await edit(uri=uri, old_string="bar", new_string="qux")
+    await asyncio.wait_for(service.resources.wait_processed(), timeout=30)
     await edit(uri=uri, old_string="foo qux", new_string="hello")
+    await asyncio.wait_for(service.resources.wait_processed(), timeout=30)
     body = await service.fs.read(uri, ctx=DEFAULT_CTX)
     assert body == "hello baz\n"
 
@@ -2468,7 +2484,9 @@ async def test_edit_requires_unique_match(service):
 async def test_edit_replace_all(service):
     uri = "viking://resources/test_edit_all.md"
     await write(uri=uri, content="dup\ndup\n")
+    await asyncio.wait_for(service.resources.wait_processed(), timeout=30)
     await edit(uri=uri, old_string="dup", new_string="x", replace_all=True)
+    await asyncio.wait_for(service.resources.wait_processed(), timeout=30)
     body = await service.fs.read(uri, ctx=DEFAULT_CTX)
     assert body == "x\nx\n"
 
@@ -2587,6 +2605,7 @@ async def test_write_user_root_subdirectory_file(service):
 async def test_edit_user_root_file_via_canonical_uri(service):
     uri = "viking://user/test_user/project/editable.md"
     await write(uri=uri, content="before\n")
+    await asyncio.wait_for(service.resources.wait_processed(), timeout=30)
 
     result = await edit(uri=uri, old_string="before", new_string="after")
 

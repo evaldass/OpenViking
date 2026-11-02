@@ -407,9 +407,22 @@ class TestCommit:
         wm_session_with_messages._agent_evolution_enabled_provider = lambda: False
         summary_called = False
 
-        async def fake_summary(_session, messages, latest_archive_overview=""):
+        async def fake_summary(
+            _session,
+            messages,
+            latest_archive_overview="",
+            *,
+            session_window_context=128_000,
+            summary_token_ratio=0.25,
+            reasoning_effort=None,
+        ):
             nonlocal summary_called
             del messages, latest_archive_overview
+            assert (session_window_context, summary_token_ratio, reasoning_effort) == (
+                128_000,
+                0.25,
+                None,
+            )
             summary_called = True
             return "# Working Memory\n\nAgent memory production is disabled."
 
@@ -744,12 +757,23 @@ class TestCommit:
         session_type = type(session)
         original_generate = session_type._generate_archive_summary_async
 
-        async def capture_generate(self, messages, latest_archive_overview=""):
+        async def capture_generate(
+            self,
+            messages,
+            latest_archive_overview="",
+            *,
+            session_window_context=128_000,
+            summary_token_ratio=0.25,
+            reasoning_effort=None,
+        ):
             seen["summary"] = latest_archive_overview
             return await original_generate(
                 self,
                 messages,
                 latest_archive_overview=latest_archive_overview,
+                session_window_context=session_window_context,
+                summary_token_ratio=summary_token_ratio,
+                reasoning_effort=reasoning_effort,
             )
 
         async def capture_extract(*args, **kwargs):

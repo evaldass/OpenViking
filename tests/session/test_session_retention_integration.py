@@ -384,7 +384,14 @@ async def test_phase2_processes_only_current_archive(
     )
     seen_message_ids: list[list[str]] = []
 
-    async def fake_summary(messages, latest_archive_overview=""):
+    async def fake_summary(
+        messages,
+        latest_archive_overview="",
+        *,
+        session_window_context=128_000,
+        summary_token_ratio=0.25,
+        reasoning_effort=None,
+    ):
         assert latest_archive_overview == ""
         seen_message_ids.append([message.id for message in messages])
         return "# Session Summary\n\n## Current State\nCurrent archive is covered."
@@ -452,7 +459,14 @@ async def test_phase2_retry_does_not_repeat_completed_current_archive_steps(
     summary_inputs: list[list[str]] = []
     long_term_inputs: list[list[str]] = []
 
-    async def fake_summary(messages, latest_archive_overview=""):
+    async def fake_summary(
+        messages,
+        latest_archive_overview="",
+        *,
+        session_window_context=128_000,
+        summary_token_ratio=0.25,
+        reasoning_effort=None,
+    ):
         assert latest_archive_overview == ""
         summary_inputs.append([message.id for message in messages])
         return "# Session Summary\n\n## Current State\nCurrent message is summarized."
@@ -642,8 +656,16 @@ async def test_phase2_persists_checkpoint_from_same_summary_call(
         messages,
         latest_archive_overview="",
         checkpoint_requests=None,
+        session_window_context=128_000,
+        summary_token_ratio=0.25,
+        reasoning_effort=None,
     ):
         nonlocal calls
+        assert (session_window_context, summary_token_ratio, reasoning_effort) == (
+            128_000,
+            0.25,
+            None,
+        )
         calls += 1
         assert latest_archive_overview == ""
         assert [message.id for message in messages] == ["u1", "a1"]
