@@ -46,9 +46,6 @@ class MockLocalAGFS:
             path = str(path)[1:]
         return self.root / path
 
-    def ensure_parent_dirs(self, path, ctx=None):
-        self._resolve(path).parent.mkdir(parents=True, exist_ok=True)
-
     def exists(self, path, ctx=None):
         return self._resolve(path).exists()
 
