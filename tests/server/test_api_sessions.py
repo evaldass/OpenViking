@@ -724,8 +724,7 @@ async def test_auto_created_session_uses_default_policy_when_server_default_enab
     session_resp = await client.get(f"/api/v1/sessions/{session_id}")
     assert session_resp.status_code == 200
     assert (
-        session_resp.json()["result"]["auto_commit_policy"]
-        == AutoCommitPolicy.default().to_dict()
+        session_resp.json()["result"]["auto_commit_policy"] == AutoCommitPolicy.default().to_dict()
     )
 
 

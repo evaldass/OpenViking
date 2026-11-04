@@ -2810,6 +2810,7 @@ async def test_delete_legacy_nonconforming_account(
     account_ids = {a["account_id"] for a in accounts}
     assert acct not in account_ids
 
+
 async def test_create_duplicate_account_fails(admin_client: httpx.AsyncClient):
     """Creating duplicate account should fail."""
     acct = _uid()

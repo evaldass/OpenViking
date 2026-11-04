@@ -97,6 +97,7 @@ def _install_session_commit_queue_fallback(service: OpenVikingService, monkeypat
     queued_commit_tasks: set[str] = set()
     tracker = get_task_tracker()
     original_has_work = tracker.has_work
+
     async def has_work(task_id, **kwargs):
         return task_id in queued_commit_tasks or await original_has_work(task_id, **kwargs)
 

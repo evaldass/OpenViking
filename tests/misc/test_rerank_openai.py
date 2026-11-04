@@ -93,9 +93,12 @@ class TestOpenAIRerankClient:
         }
         mock_response.raise_for_status = MagicMock()
 
-        with patch(
-            "openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response
-        ), patch("openviking.models.rerank.openai_rerank.logger.warning") as warning:
+        with (
+            patch(
+                "openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response
+            ),
+            patch("openviking.models.rerank.openai_rerank.logger.warning") as warning,
+        ):
             result = client.rerank_batch("query", ["doc1", "doc2", "doc3"])
 
         assert result == [0.9, 0.0, 0.7]

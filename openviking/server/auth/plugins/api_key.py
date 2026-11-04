@@ -130,9 +130,7 @@ class ApiKeyAuthPlugin(AuthPlugin):
 
         recorded_fp = record.authorizing_key_fp
         manager = request.app.state.api_key_manager
-        current_fp = await manager.get_user_key_fingerprint(
-            record.account_id, record.user_id
-        )
+        current_fp = await manager.get_user_key_fingerprint(record.account_id, record.user_id)
         if not recorded_fp or not current_fp or not hmac.compare_digest(recorded_fp, current_fp):
             raise UnauthenticatedError(
                 "OAuth token's authorizing API key has been rotated or revoked; "
