@@ -147,6 +147,160 @@ impl LocalFileSystem {
         }
     }
 
+    /// Publish a complete file without exposing the truncate/write interval to readers.
+    /// Partial/append writes intentionally retain their existing inode semantics.
+    fn write_create_atomic<F>(path: &Path, data: &[u8], before_publish: F) -> Result<()>
+    where
+        F: FnOnce(&Path, &Path) -> Result<()>,
+    {
+        use std::io::Write;
+
+        // Preserve full-write symlink behavior, including a dangling final link.
+        // Parent symlinks are resolved by the OS just as for the former open().
+        let mut destination = path.to_path_buf();
+        let mut resolved = false;
+        for _ in 0..40 {
+            match fs::symlink_metadata(&destination) {
+                Ok(metadata) if metadata.file_type().is_symlink() => {
+                    let target = fs::read_link(&destination)
+                        .map_err(|e| Error::plugin(format!("failed to read write symlink: {e}")))?;
+                    destination = if target.is_absolute() {
+                        target
+                    } else {
+                        destination.parent().unwrap_or(Path::new(".")).join(target)
+                    };
+                }
+                Ok(_) => {
+                    resolved = true;
+                    break;
+                }
+                Err(error) if error.kind() == ErrorKind::NotFound => {
+                    resolved = true;
+                    break;
+                }
+                Err(error) => {
+                    return Err(Error::plugin(format!(
+                        "failed to inspect write target: {error}"
+                    )))
+                }
+            }
+        }
+        if !resolved {
+            return Err(Error::plugin("too many symlinks in write target"));
+        }
+        let permissions = match fs::OpenOptions::new().write(true).open(&destination) {
+            // Check existing-file write permission without truncating it. Atomic replacement
+            // must not bypass a denial that the previous write-open would have enforced.
+            Ok(file) => Some(
+                file.metadata()
+                    .map_err(|e| {
+                        Error::plugin(format!("failed to inspect write permissions: {e}"))
+                    })?
+                    .permissions(),
+            ),
+            Err(error) if error.kind() == ErrorKind::NotFound => None,
+            Err(error) => {
+                return Err(Error::plugin(format!(
+                    "failed to open write target: {error}"
+                )))
+            }
+        };
+        let parent = destination
+            .parent()
+            .ok_or_else(|| Error::invalid_path(path.to_string_lossy()))?;
+        let temporary = parent.join(format!(
+            ".ragfs-write-{}.tmp",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(|e| Error::plugin(format!("failed to stage full write: {e}")))?;
+        let result = (|| {
+            if let Some(permissions) = permissions {
+                file.set_permissions(permissions).map_err(|e| {
+                    Error::plugin(format!("failed to preserve write permissions: {e}"))
+                })?;
+            }
+            file.write_all(data)
+                .map_err(|e| Error::plugin(format!("failed to stage full write: {e}")))?;
+            file.sync_all()
+                .map_err(|e| Error::plugin(format!("failed to sync staged write: {e}")))?;
+            before_publish(&temporary, &destination)?;
+            drop(file);
+            Self::replace_local_file(&temporary, &destination)?;
+            #[cfg(unix)]
+            fs::File::open(parent)
+                .and_then(|directory| directory.sync_all())
+                .map_err(|e| Error::plugin(format!("failed to sync write directory: {e}")))?;
+            Ok(())
+        })();
+        if let Err(error) = fs::remove_file(&temporary) {
+            if error.kind() != ErrorKind::NotFound {
+                tracing::warn!(path = %temporary.display(), %error, "failed to clean staged full write");
+            }
+        }
+        result
+    }
+
+    fn replace_local_file(src_local: &Path, dst_local: &Path) -> Result<()> {
+        // Keep replace semantics explicit instead of inheriting rename behavior:
+        // encrypted publish needs an overwrite-on-destination move.
+        #[cfg(windows)]
+        {
+            use std::ffi::OsStr;
+            use std::io;
+            use std::os::windows::ffi::OsStrExt;
+
+            type BOOL = i32;
+            type DWORD = u32;
+            type LPCWSTR = *const u16;
+
+            const MOVEFILE_REPLACE_EXISTING: DWORD = 0x1;
+            const MOVEFILE_WRITE_THROUGH: DWORD = 0x8;
+
+            unsafe extern "system" {
+                fn MoveFileExW(
+                    lpExistingFileName: LPCWSTR,
+                    lpNewFileName: LPCWSTR,
+                    dwFlags: DWORD,
+                ) -> BOOL;
+            }
+
+            let src_wide: Vec<u16> = OsStr::new(src_local.as_os_str())
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+            let dst_wide: Vec<u16> = OsStr::new(dst_local.as_os_str())
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+
+            let replaced = unsafe {
+                MoveFileExW(
+                    src_wide.as_ptr(),
+                    dst_wide.as_ptr(),
+                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+                )
+            };
+            if replaced == 0 {
+                return Err(Error::plugin(format!(
+                    "failed to replace: {}",
+                    io::Error::last_os_error()
+                )));
+            }
+        }
+
+        #[cfg(not(windows))]
+        {
+            fs::rename(src_local, dst_local)
+                .map_err(|e| Error::plugin(format!("failed to replace: {}", e)))?;
+        }
+
+        Ok(())
+    }
+
     #[cfg(windows)]
     fn windows_file_identity(file: &fs::File) -> Result<(u32, u64)> {
         use std::os::windows::io::AsRawHandle;
@@ -913,11 +1067,14 @@ impl FileSystem for LocalFileSystem {
             }
         }
 
+        if matches!(flags, WriteFlag::Create) {
+            Self::write_create_atomic(&local_path, data, |_, _| Ok(()))?;
+            return Ok(data.len() as u64);
+        }
+
         let mut options = fs::OpenOptions::new();
         match flags {
-            WriteFlag::Create => {
-                options.write(true).create(true).truncate(true);
-            }
+            WriteFlag::Create => unreachable!("complete writes are published atomically above"),
             WriteFlag::CreateNew => {
                 options.write(true).create_new(true);
             }
@@ -1106,58 +1263,7 @@ impl FileSystem for LocalFileSystem {
             }
         }
 
-        // Keep replace semantics explicit instead of inheriting rename behavior:
-        // encrypted publish needs an overwrite-on-destination move.
-        #[cfg(windows)]
-        {
-            use std::ffi::OsStr;
-            use std::io;
-            use std::os::windows::ffi::OsStrExt;
-
-            type BOOL = i32;
-            type DWORD = u32;
-            type LPCWSTR = *const u16;
-
-            const MOVEFILE_REPLACE_EXISTING: DWORD = 0x1;
-            const MOVEFILE_WRITE_THROUGH: DWORD = 0x8;
-
-            unsafe extern "system" {
-                fn MoveFileExW(
-                    lpExistingFileName: LPCWSTR,
-                    lpNewFileName: LPCWSTR,
-                    dwFlags: DWORD,
-                ) -> BOOL;
-            }
-
-            let src_wide: Vec<u16> = OsStr::new(src_local.as_os_str())
-                .encode_wide()
-                .chain(std::iter::once(0))
-                .collect();
-            let dst_wide: Vec<u16> = OsStr::new(dst_local.as_os_str())
-                .encode_wide()
-                .chain(std::iter::once(0))
-                .collect();
-
-            let replaced = unsafe {
-                MoveFileExW(
-                    src_wide.as_ptr(),
-                    dst_wide.as_ptr(),
-                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-                )
-            };
-            if replaced == 0 {
-                return Err(Error::plugin(format!(
-                    "failed to replace: {}",
-                    io::Error::last_os_error()
-                )));
-            }
-        }
-
-        #[cfg(not(windows))]
-        {
-            fs::rename(&src_local, &dst_local)
-                .map_err(|e| Error::plugin(format!("failed to replace: {}", e)))?;
-        }
+        Self::replace_local_file(&src_local, &dst_local)?;
 
         Ok(())
     }
@@ -1302,6 +1408,119 @@ mod tests {
             std::fs::create_dir_all(parent).unwrap();
         }
         std::fs::write(path, content).unwrap();
+    }
+
+    #[test]
+    fn test_atomic_create_readers_keep_complete_old_value_until_publication() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+        let directory = TempDir::new().unwrap();
+        let path = directory.path().join("state.json");
+        let old = br#"{"generation":1,"payload":"complete old value"}"#;
+        let new = br#"{"generation":2,"payload":"complete new value"}"#;
+        fs::write(&path, old).unwrap();
+        let old_reader = fs::File::open(&path).unwrap();
+        let writer_path = path.clone();
+        let (ready, staged) = mpsc::channel();
+        let (publish, proceed) = mpsc::channel();
+        let writer = std::thread::spawn(move || {
+            LocalFileSystem::write_create_atomic(&writer_path, new, |temporary, destination| {
+                assert_eq!(fs::read(temporary).unwrap(), new);
+                assert_eq!(destination, writer_path);
+                ready.send(()).unwrap();
+                proceed.recv_timeout(Duration::from_secs(10)).unwrap();
+                Ok(())
+            })
+        });
+        staged.recv_timeout(Duration::from_secs(10)).unwrap();
+        let observed = fs::read(&path).unwrap();
+        assert_eq!(observed, old);
+        assert!(!observed.is_empty());
+        let parsed: serde_json::Value = serde_json::from_slice(&observed).unwrap();
+        assert_eq!(parsed["generation"], 1);
+        publish.send(()).unwrap();
+        writer.join().unwrap().unwrap();
+        assert_eq!(fs::read(&path).unwrap(), new);
+        assert_eq!(
+            LocalFileSystem::read_open_file("/state.json", &path, old_reader).unwrap(),
+            old
+        );
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn test_atomic_create_failure_preserves_old_value_and_removes_temp() {
+        let directory = TempDir::new().unwrap();
+        let path = directory.path().join("state.json");
+        fs::write(&path, b"old").unwrap();
+        let error = LocalFileSystem::write_create_atomic(&path, b"new", |_, _| {
+            Err(Error::plugin("injected pre-publication failure"))
+        })
+        .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("injected pre-publication failure"));
+        assert_eq!(fs::read(&path).unwrap(), b"old");
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn test_atomic_first_create_is_absent_until_complete() {
+        let directory = TempDir::new().unwrap();
+        let path = directory.path().join("new.json");
+        LocalFileSystem::write_create_atomic(&path, b"complete", |_, destination| {
+            assert!(!destination.exists());
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(fs::read(path).unwrap(), b"complete");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_atomic_create_does_not_bypass_existing_file_write_permission() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = TempDir::new().unwrap();
+        let path = directory.path().join("readonly.json");
+        fs::write(&path, b"old").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+        let error = LocalFileSystem::write_create_atomic(&path, b"new", |_, _| Ok(())).unwrap_err();
+        assert!(error.to_string().contains("failed to open write target"));
+        assert_eq!(fs::read(&path).unwrap(), b"old");
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_atomic_create_preserves_modes_and_follows_final_symlinks() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        let directory = TempDir::new().unwrap();
+        let target = directory.path().join("target.json");
+        fs::write(&target, b"old").unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o640)).unwrap();
+        let link = directory.path().join("link.json");
+        symlink("target.json", &link).unwrap();
+        LocalFileSystem::write_create_atomic(&link, b"new", |_, _| Ok(())).unwrap();
+        assert!(fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(fs::read(&target).unwrap(), b"new");
+        assert_eq!(
+            fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+            0o640
+        );
+        let dangling = directory.path().join("dangling.json");
+        symlink("created.json", &dangling).unwrap();
+        LocalFileSystem::write_create_atomic(&dangling, b"first", |_, _| Ok(())).unwrap();
+        assert!(fs::symlink_metadata(&dangling)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(
+            fs::read(directory.path().join("created.json")).unwrap(),
+            b"first"
+        );
     }
 
     #[test]
