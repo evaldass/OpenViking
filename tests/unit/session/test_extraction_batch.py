@@ -18,6 +18,19 @@ from openviking.session.session import Session
 from openviking.utils.token_estimation import estimate_text_tokens
 
 
+@pytest.fixture(autouse=True)
+def _generation_selectors_follow_session_cluster_stub(monkeypatch):
+    from openviking.session import session as session_module
+    from openviking_cli.utils.config.open_viking_config import OpenVikingConfig
+
+    default_config = OpenVikingConfig.from_dict({})
+    monkeypatch.setattr(session_module, "get_openviking_config", lambda: default_config)
+    monkeypatch.setattr(
+        "openviking.config.generation.get_openviking_config",
+        lambda: session_module.get_openviking_config(),
+    )
+
+
 def _message(message_id: str, role: str = "user", text: str = "content") -> Message:
     return Message(id=message_id, role=role, parts=[TextPart(text)])
 
@@ -529,7 +542,7 @@ async def test_working_memory_batches_reserve_room_for_rolling_summary(monkeypat
 @pytest.mark.asyncio
 async def test_working_memory_no_vlm_fallback_uses_all_messages(monkeypatch):
     messages = [_message("u1"), _message("u2"), _message("u3")]
-    config = type("Config", (), {"vlm": None})()
+    config = type("Config", (), {"vlm": None, "output_language_override": ""})()
     monkeypatch.setattr("openviking.session.session.get_openviking_config", lambda: config)
     session = Session(
         viking_fs=None,

@@ -29,6 +29,16 @@ from openviking.storage.viking_fs import VikingFS
 from openviking_cli.exceptions import InternalError, UnavailableError
 
 
+@pytest.fixture(autouse=True)
+def _generation_selectors_follow_session_cluster_stub(monkeypatch):
+    from openviking.session import session as session_module
+
+    monkeypatch.setattr(
+        "openviking.config.generation.get_openviking_config",
+        lambda: session_module.get_openviking_config(),
+    )
+
+
 async def _write_archive(
     session,
     index: int,

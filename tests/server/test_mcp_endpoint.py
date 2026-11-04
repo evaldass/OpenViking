@@ -1186,10 +1186,14 @@ async def test_read_passes_offset_limit_to_visible_read(monkeypatch):
 )
 async def test_read_accepts_uri_and_uris(monkeypatch, arguments):
     read_visible = AsyncMock(return_value="body")
+    read_live_context = AsyncMock(return_value=None)
     monkeypatch.setattr(
         mcp_endpoint,
         "get_service",
-        lambda: SimpleNamespace(fs=SimpleNamespace(read_visible=read_visible)),
+        lambda: SimpleNamespace(
+            fs=SimpleNamespace(read_visible=read_visible),
+            mcps=SimpleNamespace(read_live_context=read_live_context),
+        ),
     )
     requested = next(iter(arguments.values()))
     expected = requested if isinstance(requested, list) else [requested]
@@ -1198,6 +1202,10 @@ async def test_read_accepts_uri_and_uris(monkeypatch, arguments):
 
     assert not getattr(result, "isError", False)
     assert [call.args[0] for call in read_visible.await_args_list] == expected
+
+    assert [call.args for call in read_live_context.await_args_list] == [
+        ("body", DEFAULT_CTX)
+    ] * len(expected)
 
 
 @pytest.mark.parametrize(

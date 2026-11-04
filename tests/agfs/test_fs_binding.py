@@ -16,6 +16,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from openviking.pyagfs.exceptions import AGFSNotFoundError
 from openviking.storage.errors import HandoffRecoveryRequired, LockAcquisitionError
 from openviking.storage.pathlock_recovery import adopt_or_reacquire
 from openviking.storage.viking_fs import init_viking_fs
@@ -52,6 +53,8 @@ class TestVikingFSBindingLocal:
     async def test_native_metrics_and_legacy_stats(self, viking_fs_binding_instance):
         """Use the binding fixture to check flat metrics and legacy stats; return None."""
         client = viking_fs_binding_instance._async_agfs
+        with pytest.raises(AGFSNotFoundError):
+            await client.read(f"/local/default/temp/missing_metrics_{uuid.uuid4().hex}")
         lease = await client.pathlock_acquire_tree(
             f"/local/default/temp/metrics_scan_{uuid.uuid4().hex}"
         )
@@ -75,16 +78,22 @@ class TestVikingFSBindingLocal:
         for metric in metrics:
             assert set(metric) == {"name", "labels", "type"} | shapes[metric["type"]]
             assert not metric["name"].startswith("openviking_")
-            assert set(metric["labels"]) <= {
-                "plugin",
-                "operation",
-                "status",
-                "kind",
-                "result",
-                "source",
-                "event",
-                "route",
-            }
+            if metric["name"] == "ragfs_operation_errors_total":
+                assert set(metric["labels"]) == {"plugin", "operation", "error_kind"}
+                assert isinstance(metric["labels"]["error_kind"], str)
+                assert metric["labels"]["error_kind"]
+                assert metric["value"] > 0 and metric["scale"] == 1.0
+            else:
+                assert set(metric["labels"]) <= {
+                    "plugin",
+                    "operation",
+                    "status",
+                    "kind",
+                    "result",
+                    "source",
+                    "event",
+                    "route",
+                }
             if metric["type"] == "histogram":
                 assert metric["count"] > 0
                 assert len(metric["bucket_counts"]) == len(metric["bucket_bounds"]) + 1
@@ -93,6 +102,13 @@ class TestVikingFSBindingLocal:
                 assert metric["scale"] == 1e-9 and type(metric["sum"]) is int
             else:
                 assert type(metric["value"]) is (int if metric["type"] == "counter" else float)
+        assert any(
+            metric["name"] == "ragfs_operation_errors_total"
+            and metric["labels"]["operation"] == "read"
+            and metric["labels"]["error_kind"] == "not_found"
+            and metric["value"] >= 1
+            for metric in metrics
+        )
         all_stats = await client.run("get_stats")
         assert set(all_stats) == {"mounts"} and all_stats["mounts"]
         scoped = await client.run("get_stats", path=all_stats["mounts"][0]["path"])
