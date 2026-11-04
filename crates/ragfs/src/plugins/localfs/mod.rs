@@ -159,7 +159,7 @@ impl LocalFileSystem {
         // Parent symlinks are resolved by the OS just as for the former open().
         let mut destination = path.to_path_buf();
         let mut resolved = false;
-        for _ in 0..40 {
+        for _ in 0..=40 {
             match fs::symlink_metadata(&destination) {
                 Ok(metadata) if metadata.file_type().is_symlink() => {
                     let target = fs::read_link(&destination)
@@ -1474,6 +1474,47 @@ mod tests {
         })
         .unwrap();
         assert_eq!(fs::read(path).unwrap(), b"complete");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_atomic_create_accepts_forty_symlinks_but_rejects_forty_one() {
+        use std::os::unix::fs::symlink;
+        let directory = TempDir::new().unwrap();
+        for index in 0..40 {
+            let target = if index == 39 {
+                "created.json".to_string()
+            } else {
+                format!("allowed-{}", index + 1)
+            };
+            symlink(target, directory.path().join(format!("allowed-{index}"))).unwrap();
+        }
+        LocalFileSystem::write_create_atomic(
+            &directory.path().join("allowed-0"),
+            b"complete",
+            |_, _| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read(directory.path().join("created.json")).unwrap(),
+            b"complete"
+        );
+        for index in 0..41 {
+            let target = if index == 40 {
+                "never-created.json".to_string()
+            } else {
+                format!("rejected-{}", index + 1)
+            };
+            symlink(target, directory.path().join(format!("rejected-{index}"))).unwrap();
+        }
+        let error = LocalFileSystem::write_create_atomic(
+            &directory.path().join("rejected-0"),
+            b"invalid",
+            |_, _| Ok(()),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("too many symlinks"));
+        assert!(!directory.path().join("never-created.json").exists());
     }
 
     #[cfg(unix)]
