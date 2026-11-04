@@ -46,6 +46,14 @@ async def main():
             }
         ).encode()
         registry.write_bytes(raw)
+        # Existing accounts now require their user registries: missing files
+        # are deliberately fatal rather than a silently writable empty baseline.
+        user_registries = []
+        for account_id in ("chatwoot:1", "valid-account"):
+            users = workspace / "viking" / account_id / "_system/users.json"
+            users.parent.mkdir(parents=True)
+            users.write_bytes(b'{"users": {}}')
+            user_registries.append(users)
         conf = root / "ov.conf"
         conf.write_text(
             json.dumps(
@@ -77,7 +85,13 @@ async def main():
             ctx = RequestContext(user=UserIdentifier("valid-account", "default"), role=Role.ROOT)
             for source, uri in service._system_asset_synchronizer._iter_managed_assets():
                 assert await service.viking_fs.read(uri, ctx=ctx) == source.read_bytes(), uri
-            assert not (workspace / "viking/chatwoot:1").exists()
+            legacy_root = workspace / "viking/chatwoot:1"
+            assert {
+                str(path.relative_to(legacy_root))
+                for path in legacy_root.rglob("*")
+                if path.is_file()
+            } == {"_system/users.json"}
+            assert all(path.read_bytes() == b'{"users": {}}' for path in user_registries)
             try:
                 await app.state.api_key_manager.create_account("new:invalid", "admin")
             except Exception as exc:
