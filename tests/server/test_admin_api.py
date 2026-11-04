@@ -84,6 +84,15 @@ class _FakeAGFS:
             raise AGFSNotFoundError(path)
         return self._files[path]
 
+    def stat(self, path, **_kwargs):
+        if path in self._files:
+            content = self._files[path]
+            raw = content.encode("utf-8") if isinstance(content, str) else content
+            return {"isDir": False, "size": len(raw), "modTime": hashlib.sha256(raw).hexdigest()}
+        if path in self._dirs:
+            return {"isDir": True, "size": 0, "modTime": "directory"}
+        raise AGFSNotFoundError(path)
+
     def write(self, path, content, **_kwargs):
         self.ensure_parent_dirs(path)
         self._files[path] = content
@@ -2797,7 +2806,7 @@ async def test_delete_legacy_nonconforming_account(
         users={},
     )
     await manager._store._save_accounts_json(updated_account_ids={acct})
-    await manager._store._save_users_json(acct)
+    await manager._store._save_users_json(acct, replace_existing=True)
 
     resp = await lightweight_admin_client.delete(
         f"/api/v1/admin/accounts/{acct}", headers=root_headers()
