@@ -196,12 +196,9 @@ class ExternalTaskService:
     async def restore_tasks(self, tasks: Iterable[TaskRecord]) -> None:
         """Reserve submitted work before any recovered queue delivery can run."""
         for task in tasks:
-            if (
-                task.task_type not in self._providers
-                or (
-                    task.status != TaskStatus.CANCELLED
-                    and (task.result is not None or task.error is not None)
-                )
+            if task.task_type not in self._providers or (
+                task.status != TaskStatus.CANCELLED
+                and (task.result is not None or task.error is not None)
             ):
                 continue
             if task.status not in {
@@ -210,7 +207,12 @@ class ExternalTaskService:
                 TaskStatus.CANCELLED,
             }:
                 continue
-            if task.status == TaskStatus.CANCELLING and task.stage in {None, "queued"}:
+            # Queue Work admission now marks a waiting task RUNNING before it
+            # owns the target. Restoring every such task as an owner would admit
+            # an unsubmitted waiter alongside the still-running Runtime task.
+            # A submission intent stage reserves uncertain submit outcomes;
+            # persisted Runtime IDs reserve tasks even when Runtime reports queued.
+            if task.stage in {None, "queued"}:
                 auth = await self._task_auth(task.task_id, task.account_id, task.user_id)
                 if not auth.get("external_task_id"):
                     continue
@@ -677,12 +679,9 @@ class ExternalTaskService:
         task = await tracker.get(task_id, account_id=account_id, user_id=user_id)
         if task is None:
             return
-        if (
-            task.status in {TaskStatus.COMPLETED, TaskStatus.FAILED}
-            or (
-                task.status != TaskStatus.CANCELLED
-                and (task.result is not None or task.error is not None)
-            )
+        if task.status in {TaskStatus.COMPLETED, TaskStatus.FAILED} or (
+            task.status != TaskStatus.CANCELLED
+            and (task.result is not None or task.error is not None)
         ):
             self._release(task)
             return
