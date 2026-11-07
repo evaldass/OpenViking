@@ -1404,10 +1404,12 @@ mod tests {
         publish.send(()).unwrap();
         writer.join().unwrap().unwrap();
         assert_eq!(fs::read(&path).unwrap(), new);
-        assert_eq!(
-            LocalFileSystem::read_open_file("/state.json", &path, old_reader).unwrap(),
-            old
-        );
+        // Upstream intentionally reverted read_open_file with the NAS read fix.
+        // An already-open OS handle still observes the complete previous inode.
+        let mut old_reader = old_reader;
+        let mut held_value = Vec::new();
+        std::io::Read::read_to_end(&mut old_reader, &mut held_value).unwrap();
+        assert_eq!(held_value, old);
         assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
     }
 
