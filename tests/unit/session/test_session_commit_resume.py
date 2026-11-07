@@ -21,6 +21,16 @@ from openviking.storage.queuefs.session_commit_processor import SessionCommitPro
 from tests.test_task_tracker import _FakeAgfs
 
 
+@pytest.fixture(autouse=True)
+def _generation_selectors_follow_session_cluster_stub(monkeypatch):
+    from openviking.session import session as session_module
+
+    monkeypatch.setattr(
+        "openviking.config.generation.get_openviking_config",
+        lambda: session_module.get_openviking_config(),
+    )
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 def test_new_queue_snapshot_preserves_wm_across_worker_reload(enabled):
     message = SessionCommitMsg(

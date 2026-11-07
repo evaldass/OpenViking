@@ -7,6 +7,7 @@ Tests the tool functions directly by setting up the identity contextvar
 and service dependency, avoiding MCP protocol complexity.
 """
 
+import asyncio
 import base64
 import json
 import re
@@ -1222,12 +1223,13 @@ async def test_read_passes_offset_limit_to_visible_read(monkeypatch):
 )
 async def test_read_accepts_uri_and_uris(monkeypatch, arguments):
     read_visible = AsyncMock(return_value="body")
+    read_live_context = AsyncMock(return_value=None)
     monkeypatch.setattr(
         mcp_endpoint,
         "get_service",
         lambda: SimpleNamespace(
             fs=SimpleNamespace(read_visible=read_visible),
-            mcps=SimpleNamespace(read_live_context=AsyncMock(return_value=None)),
+            mcps=SimpleNamespace(read_live_context=read_live_context),
         ),
     )
     requested = next(iter(arguments.values()))
@@ -1237,6 +1239,10 @@ async def test_read_accepts_uri_and_uris(monkeypatch, arguments):
 
     assert not getattr(result, "isError", False)
     assert [call.args[0] for call in read_visible.await_args_list] == expected
+
+    assert [call.args for call in read_live_context.await_args_list] == [
+        ("body", DEFAULT_CTX)
+    ] * len(expected)
 
 
 @pytest.mark.parametrize(
@@ -2375,6 +2381,7 @@ async def test_forget_directory_without_recursive_fails(service):
 
     with pytest.raises(InvalidArgumentError, match="recursive"):
         await forget(uri=dir_uri)
+    assert await service.fs.read(child_uri, ctx=ctx) == "child data"
 
 
 async def test_forget_directory_with_recursive_succeeds(service):
@@ -2465,6 +2472,7 @@ async def test_write_append_appends_to_existing(service):
     uri = "viking://resources/test_write_append.md"
     await write(uri=uri, content="line1\n", wait=True)
     await write(uri=uri, content="line2\n", mode="append")
+    await asyncio.wait_for(service.resources.wait_processed(), timeout=30)
     body = await service.fs.read(uri, ctx=DEFAULT_CTX)
     assert body == "line1\nline2\n"
 
@@ -2587,6 +2595,7 @@ async def test_edit_sequential_edits_compose(service):
     await write(uri=uri, content="foo bar baz\n", wait=True)
     await edit(uri=uri, old_string="bar", new_string="qux", wait=True)
     await edit(uri=uri, old_string="foo qux", new_string="hello")
+    await asyncio.wait_for(service.resources.wait_processed(), timeout=30)
     body = await service.fs.read(uri, ctx=DEFAULT_CTX)
     assert body == "hello baz\n"
 
@@ -2602,6 +2611,7 @@ async def test_edit_replace_all(service):
     uri = "viking://resources/test_edit_all.md"
     await write(uri=uri, content="dup\ndup\n", wait=True)
     await edit(uri=uri, old_string="dup", new_string="x", replace_all=True)
+    await asyncio.wait_for(service.resources.wait_processed(), timeout=30)
     body = await service.fs.read(uri, ctx=DEFAULT_CTX)
     assert body == "x\nx\n"
 

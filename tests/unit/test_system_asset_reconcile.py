@@ -178,3 +178,71 @@ async def test_reconciler_reports_all_failures_in_page(error_type):
     synchronizer._failures.clear()
     assert await reconciler.sync_if_changed() == 2
     assert agfs.marker == synchronizer.manifest
+
+
+@pytest.mark.asyncio
+async def test_reconciler_skips_legacy_ids_without_asset_calls_and_keeps_pagination(monkeypatch):
+    from unittest.mock import Mock
+
+    warning = Mock()
+    monkeypatch.setattr("openviking.system_assets.reconcile.logger.warning", warning)
+    lister = _FakeAccountLister(
+        [
+            {"account_id": "a"},
+            {"account_id": "chatwoot:1"},
+            {"account_id": "../escape"},
+            {"account_id": "b"},
+            {"account_id": "c"},
+            {"account_id": "d"},
+        ]
+    )
+    agfs = _FakeAGFS()
+    synchronizer = _TrackingSynchronizer(agfs)
+    reconciler = SystemAssetReconciler(
+        synchronizer, lister, agfs, user_id="system-user", page_size=2, max_concurrency=2
+    )
+    assert await reconciler.sync_if_changed() == 4
+    assert lister.calls == [(2, 1), (2, 2), (2, 3), (2, 4)]
+    assert set(synchronizer.accounts) == {"a", "b", "c", "d"}
+    assert synchronizer.max_active == 2
+    assert agfs.marker == synchronizer.manifest
+    assert warning.call_count == 2
+    assert warning.call_args_list[0].args[1] == "chatwoot:1"
+    assert "assets were not synchronized" in warning.call_args_list[0].args[0]
+    # The marker means all eligible accounts, never migration of legacy IDs.
+    assert await reconciler.sync_if_changed() == 0
+    assert set(synchronizer.accounts) == {"a", "b", "c", "d"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "account", [{}, {"account_id": None}, {"account_id": ""}, {"account_id": 1}]
+)
+async def test_reconciler_malformed_store_summary_is_fatal(account):
+    agfs = _FakeAGFS()
+    synchronizer = _TrackingSynchronizer(agfs)
+    reconciler = SystemAssetReconciler(
+        synchronizer, _FakeAccountLister([account]), agfs, user_id="system-user"
+    )
+    with pytest.raises(ValueError, match="non-empty string account_id"):
+        await reconciler.sync_if_changed()
+    assert synchronizer.accounts == []
+    assert agfs.marker is None
+    assert not agfs.lock.locked()
+
+
+@pytest.mark.asyncio
+async def test_reconciler_legacy_skip_does_not_hide_valid_account_failure():
+    agfs = _FakeAGFS()
+    synchronizer = _TrackingSynchronizer(agfs, failures={"valid"}, error_type=ValueError)
+    reconciler = SystemAssetReconciler(
+        synchronizer,
+        _FakeAccountLister([{"account_id": "chatwoot:1"}, {"account_id": "valid"}]),
+        agfs,
+        user_id="system-user",
+    )
+    with pytest.raises(RuntimeError, match="valid: ValueError: failed valid"):
+        await reconciler.sync_if_changed()
+    assert synchronizer.accounts == ["valid"]
+    assert agfs.marker is None
+    assert not agfs.lock.locked()

@@ -8,10 +8,18 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
+from openviking.models.embedder.base import DenseEmbedderBase, EmbedResult
+from openviking.models.vlm.base import VLMResponse
 from openviking.server.identity import RequestContext, Role
+from openviking.service.core import OpenVikingService
 from openviking.service.resource_service import ResourceService
+from openviking.service.task_tracker import set_task_tracker
+from openviking.storage import viking_fs as viking_fs_module
 from openviking_cli.exceptions import ConflictError
 from openviking_cli.session.user_id import UserIdentifier
+from openviking_cli.utils.config.embedding_config import EmbeddingConfig
+from openviking_cli.utils.config.open_viking_config import OpenVikingConfigSingleton
+from openviking_cli.utils.config.vlm_config import VLMConfig
 
 
 async def get_watch_task(service, ctx: RequestContext, to_uri: str):
@@ -25,17 +33,59 @@ async def get_watch_task(service, ctx: RequestContext, to_uri: str):
 
 
 @pytest_asyncio.fixture(scope="function")
-async def e2e_service(service, request_context: RequestContext, monkeypatch):
-    """End-to-end service with watch support."""
+async def e2e_service(tmp_path, request_context: RequestContext, monkeypatch):
+    """Use native lease ownership for ingestion -> Watch nested acquisition."""
+
+    class OfflineEmbedder(DenseEmbedderBase):
+        def __init__(self, dimension):
+            super().__init__(model_name="watch-offline-embedder")
+            self._dimension = dimension
+
+        def embed(self, text, is_query=False):
+            return EmbedResult(dense_vector=[0.1] * self._dimension)
+
+        def get_dimension(self):
+            return self._dimension
+
+    async def completion(self, prompt="", thinking=False, **kwargs):
+        if kwargs.get("messages") is not None:
+            return VLMResponse(content="sdk.commit()")
+        return "# Watch Summary\n\nOffline deterministic watch summary."
+
     monkeypatch.setattr(
-        service.resources,
-        "add_resource",
-        partial(
-            service.resources._execute_resource_ingestion,
-            defer_post_processing=False,
-        ),
+        EmbeddingConfig, "get_embedder", lambda self: OfflineEmbedder(self.dimension)
     )
-    yield service, request_context
+    monkeypatch.setattr(VLMConfig, "is_available", lambda self: True)
+    monkeypatch.setattr(VLMConfig, "get_completion_async", completion)
+    previous_fs = viking_fs_module._instance
+    OpenVikingConfigSingleton.reset_instance()
+    OpenVikingConfigSingleton.initialize(
+        config_dict={
+            "storage": {"workspace": str(tmp_path), "agfs": {"backend": "local"}},
+            "embedding": {
+                "dense": {
+                    "provider": "openai",
+                    "model": "offline",
+                    "api_key": "offline-test-key",
+                    "dimension": 1024,
+                }
+            },
+        }
+    )
+    service = OpenVikingService(path=str(tmp_path), user=request_context.user)
+    try:
+        await service.initialize()
+        monkeypatch.setattr(
+            service.resources,
+            "add_resource",
+            partial(service.resources.add_resource, wait=True),
+        )
+        yield service, request_context
+    finally:
+        await service.close()
+        set_task_tracker(None)
+        viking_fs_module._instance = previous_fs
+        OpenVikingConfigSingleton.reset_instance()
 
 
 @pytest_asyncio.fixture(scope="function")

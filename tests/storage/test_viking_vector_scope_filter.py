@@ -85,6 +85,8 @@ def _single_account_backend(async_adapter, account_id: str | None):
     backend._operations = {}
     backend._retired = False
     backend._async_adapter = async_adapter
+    backend._adapter = SimpleNamespace(mode="local", config={})
+    backend._mode = backend._adapter.mode
     return backend
 
 

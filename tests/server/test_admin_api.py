@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse
 from openviking.config.binding import manager_over_source
 from openviking.config.source import MemoryConfigSource
 from openviking.pyagfs.exceptions import AGFSNotFoundError
+from openviking.server.api_keys.models import AccountInfo
 from openviking.server.app import create_app
 from openviking.server.config import ServerConfig, UserConfig
 from openviking.server.dependencies import set_service
@@ -84,8 +85,13 @@ class _FakeAGFS:
         return self._files[path]
 
     def stat(self, path, **_kwargs):
-        content = self.read(path)
-        return {"size": len(content), "modTime": hash(content)}
+        if path in self._files:
+            content = self._files[path]
+            raw = content.encode("utf-8") if isinstance(content, str) else content
+            return {"isDir": False, "size": len(raw), "modTime": hashlib.sha256(raw).hexdigest()}
+        if path in self._dirs:
+            return {"isDir": True, "size": 0, "modTime": "directory"}
+        raise AGFSNotFoundError(path)
 
     def write(self, path, content, **_kwargs):
         self.ensure_parent_dirs(path)
@@ -2425,9 +2431,10 @@ async def test_user_settings_preserve_policy_inheritance_backup_and_sparse_updat
             url, json={"add_targets": {"skill_uri": "viking://~/skills"}}, headers=user_headers
         )
         assert patched.status_code == 200, patched.text
-        assert patched.json()["result"]["add_targets"]["resource_uri"] == stored["add_targets"][
-            "resource_uri"
-        ]
+        assert (
+            patched.json()["result"]["add_targets"]["resource_uri"]
+            == stored["add_targets"]["resource_uri"]
+        )
         assert patched.json()["result"]["memory_policy"]["memory_types"] == ["retired_type"]
         before_rejected = dict(fs.files)
         rejected = await client.patch(
@@ -2447,9 +2454,10 @@ async def test_user_settings_preserve_policy_inheritance_backup_and_sparse_updat
             url, json={"memory_policy": {"memory_types": ["events"]}}, headers=user_headers
         )
         assert patched.status_code == 200, patched.text
-        assert patched.json()["result"]["add_targets"]["resource_uri"] == stored["add_targets"][
-            "resource_uri"
-        ]
+        assert (
+            patched.json()["result"]["add_targets"]["resource_uri"]
+            == stored["add_targets"]["resource_uri"]
+        )
         assert json.loads(fs.files[stored_uri])["memory_policy"]["memory_types"] == ["events"]
     finally:
         set_openviking_config(previous_config)
@@ -2848,6 +2856,40 @@ async def test_delete_account_retries_cleanup_and_retires_ttl_callbacks(
         assert not [key async for key in engine.redis.scan_iter(match=prefix + "*")]
     finally:
         await engine.aclose()
+
+
+async def test_delete_legacy_nonconforming_account(
+    lightweight_admin_app: FastAPI,
+    lightweight_admin_client: httpx.AsyncClient,
+):
+    """ROOT can delete legacy account ids that predate account id validation."""
+    acct = "chatwoot:1"
+    manager = lightweight_admin_app.state.api_key_manager
+
+    class _DeletionService:
+        async def delete(self, account_id, *, actor):
+            del actor
+            await manager.delete_account(account_id)
+            return {"deleted": True}
+
+    lightweight_admin_app.state.deletion_service = _DeletionService()
+    manager._store._accounts[acct] = AccountInfo(
+        created_at="2026-03-30T08:54:32.006457+00:00",
+        users={},
+    )
+    await manager._store._save_accounts_json(updated_account_ids={acct})
+    await manager._store._save_users_json(acct, replace_existing=True)
+
+    resp = await lightweight_admin_client.delete(
+        f"/api/v1/admin/accounts/{acct}", headers=root_headers()
+    )
+    assert resp.status_code == 202
+    assert resp.json()["result"]["deleted"] is True
+
+    resp = await lightweight_admin_client.get("/api/v1/admin/accounts", headers=root_headers())
+    accounts = resp.json()["result"]
+    account_ids = {a["account_id"] for a in accounts}
+    assert acct not in account_ids
 
 
 async def test_create_duplicate_account_fails(admin_client: httpx.AsyncClient):

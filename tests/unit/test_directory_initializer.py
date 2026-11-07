@@ -199,6 +199,7 @@ async def test_system_assets_sync_only_for_account_initialization(monkeypatch):
     service._viking_fs = viking_fs
     service._directory_initializer = initializer
     ctx = RequestContext(user=UserIdentifier("acme", "alice"), role=Role.ADMIN)
+    expected_user_count = 1 + len(PRESET_DIRECTORIES["user"].children)
 
     await initializer.initialize_account_workspace(ctx, sync_system_assets=False)
     synchronizer.sync.assert_not_awaited()
@@ -207,10 +208,11 @@ async def test_system_assets_sync_only_for_account_initialization(monkeypatch):
 
     viking_fs.contexts.clear()
     viking_fs.write_leases.clear()
-    assert await service.initialize_account_workspace(ctx) == (6, 7)
+    assert await service.initialize_account_workspace(ctx) == (6, expected_user_count)
+    assert f"{canonical_user_root(ctx)}/tools" in viking_fs.contexts
     agfs.pathlock_acquire_tree.assert_awaited_once_with("/local/acme", timeout_secs=10.0)
     agfs.pathlock_release.assert_awaited_once_with(lease)
-    assert viking_fs.write_leases == [lease] * 13
+    assert viking_fs.write_leases == [lease] * (6 + expected_user_count)
     await initializer.initialize_account_directories(ctx)
     await initializer.initialize_user_directories(ctx)
 
@@ -220,10 +222,13 @@ async def test_system_assets_sync_only_for_account_initialization(monkeypatch):
     agfs.pathlock_release.reset_mock()
     viking_fs.contexts.clear()
     viking_fs.write_leases.clear()
-    assert await service.initialize_account_workspace(ctx, lease_ref=lease) == (6, 7)
+    assert await service.initialize_account_workspace(ctx, lease_ref=lease) == (
+        6,
+        expected_user_count,
+    )
     agfs.pathlock_acquire_tree.assert_not_awaited()
     agfs.pathlock_release.assert_not_awaited()
-    assert viking_fs.write_leases == [lease] * 13
+    assert viking_fs.write_leases == [lease] * (6 + expected_user_count)
 
     for error in (OSError("asset write failed"), asyncio.CancelledError()):
         synchronizer.sync.side_effect = error
@@ -235,9 +240,9 @@ async def test_system_assets_sync_only_for_account_initialization(monkeypatch):
     viking_fs.write_leases.clear()
     agfs.pathlock_acquire_tree.reset_mock()
     agfs.pathlock_release.reset_mock()
-    assert await service.initialize_user_directories(ctx) == 7
+    assert await service.initialize_user_directories(ctx) == expected_user_count
     agfs.pathlock_acquire_tree.assert_awaited_once_with("/local/acme/user/alice")
-    assert viking_fs.write_leases == [lease] * 7
+    assert viking_fs.write_leases == [lease] * expected_user_count
     agfs.pathlock_release.assert_awaited_once_with(lease)
 
     for error in (OSError("directory read failed"), asyncio.CancelledError()):

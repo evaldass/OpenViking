@@ -1158,7 +1158,7 @@ encryption behavior for custom configuration sources.
 ### rerank
 
 Reranking model for search result refinement. Supports VikingDB (Volcengine), Cohere,
-OpenAI-compatible APIs, LiteLLM, and Jev.
+OpenAI-compatible APIs, LiteLLM, Jev, and TEI.
 
 **Volcengine (VikingDB):**
 
@@ -1265,6 +1265,8 @@ absolute score filtering. When enabling Choice, set `"threshold": 0`. The MCP `f
 and `search` `min_score` argument overrides that setting, so pass `min_score=0` when
 using Choice through MCP.
 
+For TEI, `api_base` accepts the server base URL or full `/rerank` endpoint. Authentication is optional; with `api_key`, set `"provider": "tei"` explicitly.
+
 **Parameters**
 
 | Parameter | Type | Description |
@@ -1278,9 +1280,10 @@ using Choice through MCP.
 | `model` | str | Model name for OpenAI-compatible, LiteLLM, or Jev providers |
 | `mode` | `"noul"`, `"choice"`, or `null` | Jev rerank mode. `null` and omission use `"noul"` |
 | `candidates_visible` | bool | Jev Noul only. Default: `false`, isolating each candidate in its own question. Explicit `true` shares candidates in state. Choice ignores this option. |
-| `timeout` | float | HTTP request timeout in seconds for HTTP rerank providers, including Jev. Default: `30.0` |
+| `timeout` | float | HTTP request timeout in seconds for HTTP rerank providers, including Jev and TEI. Default: `30.0` |
 | `max_input_tokens` | int | Maximum estimated raw-text tokens in each query-document pair sent to the reranker. Oversized inputs retain their beginning and end. `0` disables. Default: `0` |
 | `log_payloads` | bool | Log complete rerank request and response payloads. May expose query and document content. Default: `false` |
+| `batch_size` | int | Maximum documents per rerank request (default `32`); TEI candidates are chunked. |
 | `threshold` | float | Rerank score threshold between `0.0` and `1.0`; reranked results below this are filtered out. It never filters vector scores (rerank not used, or failed), and a request `score_threshold` overrides it. Default: `0.1` |
 | `extra_headers` | object | Custom HTTP headers (for OpenAI-compatible providers, optional) |
 
@@ -1290,6 +1293,7 @@ using Choice through MCP.
 - `openai`: OpenAI-compatible Rerank API
 - `litellm`: LiteLLM Rerank API
 - `jev`: Jev (TypeSafe System One) structured-decision API with Choice comparison and independent Noul scoring
+- `tei`: Hugging Face Text Embeddings Inference rerank API
 
 If rerank is not configured, search uses vector similarity only.
 
