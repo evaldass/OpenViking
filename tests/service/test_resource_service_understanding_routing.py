@@ -70,7 +70,9 @@ async def test_extensionless_remote_url_queues_frozen_understanding_route(
     )
     service = ResourceService(
         vikingdb=object(),
-        viking_fs=SimpleNamespace(_async_agfs=agfs),
+        viking_fs=SimpleNamespace(
+            _async_agfs=agfs, read_file=AsyncMock(side_effect=FileNotFoundError)
+        ),
         resource_processor=processor,
         skill_processor=object(),
     )
@@ -175,7 +177,9 @@ async def test_remote_mpeg_ts_url_queues_understanding_after_prepare(
     )
     service = ResourceService(
         vikingdb=object(),
-        viking_fs=SimpleNamespace(_async_agfs=agfs),
+        viking_fs=SimpleNamespace(
+            _async_agfs=agfs, read_file=AsyncMock(side_effect=FileNotFoundError)
+        ),
         resource_processor=processor,
         skill_processor=object(),
     )
@@ -276,7 +280,9 @@ async def test_temp_uploaded_file_queues_external_parse_with_file_id(
     )
     service = ResourceService(
         vikingdb=object(),
-        viking_fs=SimpleNamespace(_async_agfs=agfs),
+        viking_fs=SimpleNamespace(
+            _async_agfs=agfs, read_file=AsyncMock(side_effect=FileNotFoundError)
+        ),
         resource_processor=processor,
         skill_processor=object(),
     )

@@ -75,9 +75,10 @@ class MockSkillProcessor:
 
 
 class MockVikingFS:
-    """Mock VikingFS for testing."""
+    """Mock VikingFS for testing, with no persisted user configuration."""
 
-    pass
+    async def read_file(self, uri, **_kwargs):
+        raise FileNotFoundError(uri)
 
 
 class MockVikingDB:
