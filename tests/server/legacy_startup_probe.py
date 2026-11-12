@@ -54,6 +54,21 @@ async def main():
             users.parent.mkdir(parents=True)
             users.write_bytes(b'{"users": {}}')
             user_registries.append(users)
+        persisted_settings = {}
+        for account_id, settings in {
+            "valid-account": {
+                "namespace": "legacy",
+                "resource_acl": {"auto_protect_new_content": True},
+            },
+            "chatwoot:1": {
+                "namespace": "legacy",
+                "resource_acl": {"auto_protect_new_content": True},
+            },
+        }.items():
+            path = workspace / "viking" / account_id / "_system/setting.json"
+            content = json.dumps(settings, sort_keys=True).encode()
+            path.write_bytes(content)
+            persisted_settings[path] = content
         conf = root / "ov.conf"
         conf.write_text(
             json.dumps(
@@ -83,6 +98,13 @@ async def main():
             # filesystem; there must be no asset directory for the legacy ID.
             service = get_service()
             ctx = RequestContext(user=UserIdentifier("valid-account", "default"), role=Role.ROOT)
+            acl = service._vikingdb_manager.acl_manager
+            assert await acl.is_enabled("valid-account") is True
+            assert await acl.is_enabled("chatwoot:1") is False
+            assert all(path.read_bytes() == content for path, content in persisted_settings.items())
+            marker = workspace / "viking/_system/system_assets_manifest.json"
+            assert marker.read_bytes() == service._system_asset_synchronizer.manifest
+            assert await service._system_asset_synchronizer.sync(ctx) == 0
             for source, uri in service._system_asset_synchronizer._iter_managed_assets():
                 assert await service.viking_fs.read(uri, ctx=ctx) == source.read_bytes(), uri
             legacy_root = workspace / "viking/chatwoot:1"
@@ -90,7 +112,7 @@ async def main():
                 str(path.relative_to(legacy_root))
                 for path in legacy_root.rglob("*")
                 if path.is_file()
-            } == {"_system/users.json"}
+            } == {"_system/users.json", "_system/setting.json"}
             assert all(path.read_bytes() == b'{"users": {}}' for path in user_registries)
             try:
                 await app.state.api_key_manager.create_account("new:invalid", "admin")

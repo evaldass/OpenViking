@@ -904,7 +904,9 @@ class TestMemoryUpdater:
 
         async def mock_read_file(uri, **kwargs):
             if uri == deleted_uri:
-                raise AssertionError("deleted URI should not be read")
+                # Pure deletion must inspect the source to unlink neighbors safely,
+                # but must never rewrite links on the removed URI itself.
+                return MemoryFileUtils.write(MemoryFile(uri=uri, content="old content"))
             return MemoryFileUtils.write(MemoryFile(uri=uri, content="new content"))
 
         mock_viking_fs.read_file = AsyncMock(side_effect=mock_read_file)
@@ -946,9 +948,11 @@ class TestMemoryUpdater:
 
         assert result.written_uris == [written_uri]
         assert result.deleted_uris == [deleted_uri]
+        assert deleted_uri in [call.args[0] for call in mock_viking_fs.read_file.await_args_list]
         assert deleted_uri not in [
-            call.args[0] for call in mock_viking_fs.read_file.await_args_list
+            call.args[0] for call in mock_viking_fs.write_file.await_args_list
         ]
+        updater._apply_delete.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_apply_operations_skips_case_only_delete_conflicting_with_upsert(self):

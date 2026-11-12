@@ -586,7 +586,9 @@ async def test_uat_producer_payload_reaches_worker_without_persisting_token(
         ),
     )
     task_tracker = SimpleNamespace(
-        create=AsyncMock(return_value=SimpleNamespace(task_id="task-1")),
+        create=AsyncMock(
+            return_value=SimpleNamespace(task_id="task-1", task_type="add_resource", meta={})
+        ),
         start=AsyncMock(),
         patch_task=AsyncMock(),
         complete=AsyncMock(),
@@ -823,7 +825,9 @@ async def test_uat_producer_cancellation_respects_queue_ownership(
         tree_builder=SimpleNamespace(resolve_target_uri=AsyncMock(return_value=(root_uri, None))),
     )
     task_tracker = SimpleNamespace(
-        create=AsyncMock(return_value=SimpleNamespace(task_id="task-1")),
+        create=AsyncMock(
+            return_value=SimpleNamespace(task_id="task-1", task_type="add_resource", meta={})
+        ),
         patch_task=AsyncMock(),
         fail=AsyncMock(),
     )
