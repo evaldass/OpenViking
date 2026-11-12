@@ -58,10 +58,37 @@ def _case() -> Case:
     )
 
 
+class DummyAsyncAGFS:
+    """Process-local tree-lock double matching the PolicySet storage contract."""
+
+    def __init__(self):
+        self._locks: dict[str, asyncio.Lock] = {}
+        self._leases: dict[object, asyncio.Lock] = {}
+        self.acquire_calls: list[tuple[str, float | None]] = []
+        self.release_calls: list[object] = []
+
+    async def pathlock_acquire_tree(self, path: str, timeout_secs: float | None = None):
+        lock = self._locks.setdefault(path, asyncio.Lock())
+        if timeout_secs is None:
+            await lock.acquire()
+        else:
+            await asyncio.wait_for(lock.acquire(), timeout=timeout_secs)
+        lease = object()
+        self._leases[lease] = lock
+        self.acquire_calls.append((path, timeout_secs))
+        return lease
+
+    async def pathlock_release(self, lease: object):
+        lock = self._leases.pop(lease)
+        lock.release()
+        self.release_calls.append(lease)
+
+
 class DummyVikingFS:
     def __init__(self):
         self.reloads = 0
         self.version = 1
+        self._async_agfs = DummyAsyncAGFS()
 
     async def ls(self, uri: str, output: str = "original", ctx=None):
         del output, ctx
@@ -339,6 +366,11 @@ async def test_default_policy_optimization_pipeline_runs_one_batch():
     assert len(DummyUpdater.last_instance.transaction_handles) == 1
     assert DummyUpdater.last_instance.transaction_handles[0] is not None
     assert initial_policy_set.viking_fs.reloads == 1
+    assert initial_policy_set.viking_fs._async_agfs.acquire_calls == [
+        ("/local/default/user/u/memories/experiences", 300.0)
+    ]
+    assert len(initial_policy_set.viking_fs._async_agfs.release_calls) == 1
+    assert initial_policy_set.viking_fs._async_agfs._leases == {}
     assert len(result.epochs) == 1
     assert result.epochs[0].epoch == 0
     assert result.epochs[0].policy_snapshot_ids == ["snapshot-1"]

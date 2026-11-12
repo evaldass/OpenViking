@@ -52,6 +52,30 @@ def test_system_namespace_is_readable_by_every_account_role(role, uri):
 
 
 @pytest.mark.parametrize(
+    "uri,mutable_roles",
+    [
+        (SYSTEM_ROOT_URI, set()),
+        ("viking://system/local-notes.md", set()),
+        (SYSTEM_COMPILE_ROOT, set()),
+        (f"{SYSTEM_COMPILE_ROOT}/global-other/file.md", set()),
+        (SYSTEM_EXAMPLE_SKILLS_ROOT, set()),
+        (f"{SYSTEM_EXAMPLE_SKILLS_ROOT}/demo/SKILL.md", set()),
+        (SYSTEM_MEMORY_BUILTIN_ROOT, set()),
+        (f"{SYSTEM_MEMORY_BUILTIN_ROOT}/profile.yaml", set()),
+        (SYSTEM_MEMORY_CUSTOM_ROOT, set()),
+        (CUSTOM_ASSET_URI, {Role.ADMIN, Role.ROOT}),
+        (SYSTEM_COMPILE_GLOBAL_ROOT, {Role.ADMIN, Role.ROOT}),
+        (f"{SYSTEM_COMPILE_GLOBAL_ROOT}/nested/file.md", {Role.ADMIN, Role.ROOT}),
+    ],
+)
+@pytest.mark.parametrize("action", [AclAction.READ, AclAction.WRITE, AclAction.MANAGE])
+@pytest.mark.parametrize("role", [Role.USER, Role.GLOBAL, Role.ADMIN, Role.ROOT])
+def test_system_permission_role_path_action_matrix(uri, mutable_roles, action, role):
+    expected = action is AclAction.READ or role in mutable_roles
+    assert _fs()._system_permission_allows(uri, _ctx(role), action) is expected
+
+
+@pytest.mark.parametrize(
     "role,allowed_actions",
     [
         (Role.USER, {AclAction.READ}),
@@ -193,7 +217,7 @@ async def test_admin_and_root_can_manage_global_directory_with_account_isolation
 @pytest.mark.parametrize("action", [AclAction.WRITE, AclAction.MANAGE])
 @pytest.mark.parametrize("role", [Role.ROOT, Role.ADMIN])
 @pytest.mark.asyncio
-async def test_system_writes_allow_root_and_limit_admin_to_custom_assets(action, role):
+async def test_system_writes_protect_official_roots_for_all_external_roles(action, role):
     fs = _fs()
     ctx = _ctx(role, bypass_acl=True)
     for uri in (
@@ -206,13 +230,11 @@ async def test_system_writes_allow_root_and_limit_admin_to_custom_assets(action,
         f"{SYSTEM_EXAMPLE_SKILLS_ROOT}/daily-report/SKILL.md",
         SYSTEM_MEMORY_CUSTOM_ROOT,
     ):
-        if role == Role.ROOT:
+        with pytest.raises(PermissionDeniedError):
             await fs._ensure_access(uri, ctx, action=action)
-        else:
-            with pytest.raises(PermissionDeniedError):
-                await fs._ensure_access(uri, ctx, action=action)
         await fs._ensure_access(uri, ctx, action=AclAction.READ)
     await fs._ensure_access(CUSTOM_ASSET_URI, ctx, action=action)
+    await fs._ensure_access(SYSTEM_COMPILE_GLOBAL_ROOT, ctx, action=action)
 
 
 @pytest.mark.parametrize("action", [AclAction.WRITE, AclAction.MANAGE])

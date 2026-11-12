@@ -378,9 +378,16 @@ async def test_http_contract_preserves_retries_and_compile_target_lifecycle(
     )
 
     # Drive the real task provider explicitly; generation and derived refresh are external work.
+    from openviking.storage.queuefs import get_queue_manager
+
+    native_queue_manager = get_queue_manager()
     monkeypatch.setattr(
         "openviking.storage.queuefs.get_queue_manager",
-        lambda: SimpleNamespace(enqueue=AsyncMock()),
+        lambda: SimpleNamespace(
+            enqueue=AsyncMock(),
+            get_queue=native_queue_manager.get_queue,
+            SEMANTIC=native_queue_manager.SEMANTIC,
+        ),
     )
     monkeypatch.setattr(service.fs, "finalize_compile_directories", AsyncMock())
     monkeypatch.setattr(service.search, "find", AsyncMock(return_value=SimpleNamespace(total=2)))

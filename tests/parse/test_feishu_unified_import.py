@@ -545,7 +545,7 @@ async def test_folder_processor_routes_each_content_and_keeps_tree(monkeypatch, 
         assert f"{result.temp_dir_path}/Root/Root/0.md" in fs.files
         assert f"{result.temp_dir_path}/Root/Report/Leaf/0.md" in fs.files
         assert f"{result.temp_dir_path}/Root/Report/Report/0.md" in fs.files
-        assert f"{result.temp_dir_path}/Root/Report/Deck/0.md" in fs.files
+        assert f"{result.temp_dir_path}/Root/Report/Deck.pptx/0.md" in fs.files
     finally:
         for resource in resources:
             resource.is_temporary = True

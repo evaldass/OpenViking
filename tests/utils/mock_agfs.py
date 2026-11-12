@@ -1,6 +1,7 @@
 import asyncio
 import shutil
 import threading
+import time
 import uuid
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -15,6 +16,12 @@ class MockLocalAGFS:
     feasible or desired.
     """
 
+    # Coordination belongs to the backing store, not to one Python wrapper.
+    # Keep one process-local lease domain per mock root so independently-created
+    # clients against the same test store observe the same leader.
+    _leader_guard = threading.Lock()
+    _leader_domains = {}
+
     def __init__(self, config=None, root_path=None):
         self.config = config
         self.root = Path(root_path) if root_path else Path("/tmp/viking_data")
@@ -22,6 +29,58 @@ class MockLocalAGFS:
         self._pathlocks_guard = threading.Lock()
         self._pathlocks = {}
         self._pathlock_leases = {}
+
+    def _leader_domain(self):
+        root = str(self.root.resolve())
+        return self._leader_domains.setdefault(root, {"keys": {}, "leases": {}})
+
+    async def leader_validate_async(self):
+        """Mirror successful native coordination-provider validation."""
+
+    async def leader_try_acquire_async(self, key, holder_id, ttl_secs):
+        now = time.monotonic()
+        with self._leader_guard:
+            domain = self._leader_domain()
+            active_ref = domain["keys"].get(key)
+            active = domain["leases"].get(active_ref)
+            if active is not None and active["deadline"] > now:
+                return None
+            if active_ref is not None:
+                domain["keys"].pop(key, None)
+                domain["leases"].pop(active_ref, None)
+
+            lease_ref = str(uuid.uuid4())
+            domain["keys"][key] = lease_ref
+            domain["leases"][lease_ref] = {
+                "key": key,
+                "holder_id": holder_id,
+                "deadline": now + ttl_secs,
+            }
+            return lease_ref
+
+    async def leader_renew_async(self, lease_ref, ttl_secs):
+        now = time.monotonic()
+        with self._leader_guard:
+            domain = self._leader_domain()
+            lease = domain["leases"].get(lease_ref)
+            if (
+                lease is None
+                or lease["deadline"] <= now
+                or domain["keys"].get(lease["key"]) != lease_ref
+            ):
+                if lease is not None:
+                    domain["keys"].pop(lease["key"], None)
+                    domain["leases"].pop(lease_ref, None)
+                return False
+            lease["deadline"] = now + ttl_secs
+            return True
+
+    async def leader_release_async(self, lease_ref):
+        with self._leader_guard:
+            domain = self._leader_domain()
+            lease = domain["leases"].pop(lease_ref, None)
+            if lease is not None and domain["keys"].get(lease["key"]) == lease_ref:
+                domain["keys"].pop(lease["key"], None)
 
     def seed_system_assets(self, account_id="default"):
         """Seed immutable startup inputs for this filesystem-only queue double."""

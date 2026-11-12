@@ -2617,7 +2617,7 @@ async def test_delete_account(
     from itertools import islice
     from types import SimpleNamespace
 
-    from openviking.storage.expr import Eq
+    from openviking.storage.expr import And, Eq
     from openviking.storage.queuefs.queue_manager import QueueManager
     from openviking.storage.vectordb_adapters.local_adapter import LocalCollectionAdapter
     from openviking.storage.viking_vector_index_backend import _SingleAccountBackend
@@ -2654,11 +2654,18 @@ async def test_delete_account(
         for record_id in ids:
             rows.pop(record_id, None)
 
-    adapter._collection = SimpleNamespace(delete_data=delete_data)
+    def matches(row, expression):
+        if isinstance(expression, Eq):
+            return row.get(expression.field) == expression.value
+        if isinstance(expression, And):
+            return all(matches(row, condition) for condition in expression.conds)
+        raise AssertionError(f"unexpected deletion filter: {expression!r}")
+
+    adapter._collection = SimpleNamespace(delete_data=delete_data, close=lambda: None)
     scan_rows = rows if index_updates_immediately else indexed_rows
     adapter.query = lambda *, filter, limit, offset=0, **kwargs: list(
         islice(
-            (row for row in scan_rows.values() if row[filter.field] == filter.value),
+            (row for row in scan_rows.values() if matches(row, filter)),
             offset,
             offset + limit,
         )

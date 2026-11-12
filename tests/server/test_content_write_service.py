@@ -52,7 +52,9 @@ async def test_write_updates_memory_file_and_parent_overview(service, monkeypatc
         e for e in events if e.event_name == "file_mutation" and e.payload["uri"] == memory_uri
     ]
     assert len(writes) == 1
-    assert writes[0].payload["task_id"] == result["task_id"]
+    assert isinstance(writes[0].payload["task_id"], str)
+    assert writes[0].payload["task_id"]
+    assert "task_id" not in result
     assert writes[0].payload["memory_type"] == "preferences"
     assert writes[0].payload["change_type"] == "modified"
 
