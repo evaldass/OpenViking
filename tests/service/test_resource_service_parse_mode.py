@@ -55,7 +55,7 @@ def service(monkeypatch: pytest.MonkeyPatch, watch_tracker) -> ResourceService:
 
     instance = ResourceService(
         vikingdb=object(),
-        viking_fs=object(),
+        viking_fs=SimpleNamespace(read_file=AsyncMock(side_effect=FileNotFoundError)),
         resource_processor=_ResourceProcessor(),
         skill_processor=object(),
     )

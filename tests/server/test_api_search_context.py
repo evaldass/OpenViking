@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from openviking.server.identity import RequestContext, Role
-from openviking_cli.retrieve import ContextType, MatchedContext
+from openviking_cli.retrieve import ContextType, FindResult, MatchedContext
 from openviking_cli.session.user_id import UserIdentifier
 
 
@@ -16,6 +16,11 @@ class _FakeFindResult:
         self.memories = memories or []
         self.resources = []
         self.skills = []
+
+    def to_dict(self, **kwargs):
+        return FindResult(
+            memories=self.memories, resources=self.resources, skills=self.skills
+        ).to_dict(**kwargs)
 
 
 def _memory(uri: str, score: float = 0.9, abstract: str = "", level: int = 2):

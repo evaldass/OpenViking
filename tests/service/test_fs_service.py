@@ -5,7 +5,7 @@
 import asyncio
 from dataclasses import replace
 from types import SimpleNamespace
-from unittest.mock import ANY, AsyncMock, call
+from unittest.mock import ANY, AsyncMock, Mock, call
 
 import pytest
 
@@ -426,12 +426,15 @@ def request_context():
 @pytest.mark.asyncio
 async def test_read_visible_strips_memory_metadata_before_slicing(request_context):
     raw = 'line one\nline two\n\n<!-- MEMORY_FIELDS\n{"secret":"hidden"}\n-->'
-    viking_fs = SimpleNamespace(read_file=AsyncMock(return_value=raw))
+    viking_fs = VikingFS(agfs=SimpleNamespace())
+    viking_fs.read_file = AsyncMock(return_value=raw)
+    viking_fs.authorize_read = Mock(wraps=viking_fs.authorize_read)
     service = FSService(viking_fs=viking_fs)
     uri = "viking://user/ryoma/memories/notes/private.md"
 
     assert await service.read_visible(uri, ctx=request_context, offset=3, limit=1) == ""
     viking_fs.read_file.assert_awaited_once_with(uri, ctx=request_context)
+    viking_fs.authorize_read.assert_called_once_with(request_context, [uri])
 
 
 @pytest.mark.parametrize(
@@ -448,11 +451,13 @@ async def test_read_visible_strips_supported_memory_metadata_trailers(
     raw,
 ):
     uri = "viking://user/ryoma/memories/notes/private.md"
-    service = FSService(
-        viking_fs=SimpleNamespace(read_file=AsyncMock(return_value=raw)),
-    )
+    viking_fs = VikingFS(agfs=SimpleNamespace())
+    viking_fs.read_file = AsyncMock(return_value=raw)
+    viking_fs.authorize_read = Mock(wraps=viking_fs.authorize_read)
+    service = FSService(viking_fs=viking_fs)
 
     assert await service.read_visible(uri, ctx=request_context) == "visible"
+    viking_fs.authorize_read.assert_called_once_with(request_context, [uri])
 
 
 @pytest.mark.asyncio

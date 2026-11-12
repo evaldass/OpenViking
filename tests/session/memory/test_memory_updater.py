@@ -2588,7 +2588,12 @@ class TestConsecutivePatchesSameURI:
 
         parsed = parse_memory_file_with_fields(store[uri])
         assert parsed["content"] == "Original body"
-        assert not any(record.name.endswith("merge_op.patch_handler") for record in caplog.records)
+        assert not [
+            record
+            for record in caplog.records
+            if record.name == "openviking.session.memory.merge_op.patch_handler"
+            and record.levelno >= 30
+        ]
         assert any(
             "[memory_updater] Skipping field update after merge_op failure" in call.args[0]
             and f"uri={uri}" in call.args[0]

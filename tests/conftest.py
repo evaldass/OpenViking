@@ -155,6 +155,7 @@ async def service(
 
     monkeypatch.setattr(EmbeddingConfig, "get_embedder", lambda self: FakeEmbedder())
     mock_agfs = MockLocalAGFS(root_path=test_data_dir / "mock_agfs_root")
+    mock_agfs.seed_system_assets(UserIdentifier.the_default_user().account_id)
     monkeypatch.setattr(
         "openviking.utils.agfs_utils.create_agfs_client",
         lambda *args, **kwargs: mock_agfs,

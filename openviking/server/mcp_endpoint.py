@@ -1169,6 +1169,15 @@ async def read(
                         return result
                 return content
             except OpenVikingError as exc:
+                if (
+                    isinstance(exc, InvalidArgumentError)
+                    and (exc.details or {}).get("actual") == "directory"
+                ):
+                    exc = InvalidArgumentError(
+                        f"Directory URI is not readable as a file: {resolved_uri}. "
+                        "List it first, then read a file URI.",
+                        details=exc.details,
+                    )
                 return _mcp_failure(exc)
 
     if len(uri_list) == 1:

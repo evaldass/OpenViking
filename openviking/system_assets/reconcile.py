@@ -7,6 +7,7 @@ import json
 from collections.abc import Collection
 from typing import Any, Protocol
 
+from openviking.core.identifiers import validate_account_id
 from openviking.pyagfs import AGFSNotFoundError, AsyncAGFSClient
 from openviking.pyagfs.async_client import fs_ctx_from_agfs_path
 from openviking.server.account_stores.models import AccountSummary
@@ -17,6 +18,9 @@ from openviking.system_assets.sync import (
     system_asset_sync_lock,
 )
 from openviking_cli.session.user_id import UserIdentifier
+from openviking_cli.utils import get_logger
+
+logger = get_logger(__name__)
 
 
 class AccountLister(Protocol):
@@ -59,6 +63,9 @@ class SystemAssetReconciler:
             if await self._read_manifest_digest() == digest:
                 return 0
             synced_accounts = await self._sync_all()
+            # The marker covers eligible accounts only. Invalid persisted IDs
+            # cannot safely address asset paths; skipping them is not migration.
+            # New valid accounts receive assets via account initialization.
             await self._write_manifest(manifest, lease)
             return synced_accounts
 
@@ -70,12 +77,27 @@ class SystemAssetReconciler:
                 limit=self._page_size,
                 page=page,
             )
-            active_accounts = [
-                account
-                for account in accounts
-                if account.get("status", "active") == "active"
-                and account.get("account_id") not in self._skip_account_ids
-            ]
+            active_accounts = []
+            for account in accounts:
+                if account.get("status", "active") != "active":
+                    continue
+                account_id = account.get("account_id")
+                # Missing/non-string summaries indicate a broken store contract,
+                # not a persisted legacy identifier. Keep these failures fatal.
+                if not isinstance(account_id, str) or not account_id:
+                    raise ValueError("account summary must contain a non-empty string account_id")
+                if account_id in self._skip_account_ids:
+                    continue
+                validation_error = validate_account_id(account_id)
+                if validation_error:
+                    logger.warning(
+                        "Skipping system asset reconciliation for persisted legacy account %r: %s; "
+                        "account data is unchanged and assets were not synchronized",
+                        account_id,
+                        validation_error,
+                    )
+                    continue
+                active_accounts.append(account)
             results = await asyncio.gather(
                 *(self._sync_account(account) for account in active_accounts),
                 return_exceptions=True,

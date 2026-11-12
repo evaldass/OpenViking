@@ -252,7 +252,12 @@ async def test_close_releases_data_dir_lock_after_successful_cleanup(monkeypatch
     service._initialized = True
     monkeypatch.setattr(service, "_release_data_dir_lock", lambda: released.append(True))
 
+    from unittest.mock import AsyncMock
+
+    tracker = SimpleNamespace(close=AsyncMock())
+    monkeypatch.setattr("openviking.service.core.get_task_tracker", lambda: tracker)
     await service.close()
+    tracker.close.assert_awaited_once()
 
     assert service._initialized is False
     assert released == [True]

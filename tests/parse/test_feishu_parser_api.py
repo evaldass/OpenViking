@@ -117,6 +117,7 @@ async def _interrupt_staged_add_resource(monkeypatch, task_status):
     service = SimpleNamespace(
         execute_add_resource_job=AsyncMock(side_effect=asyncio.CancelledError),
         _link_resource_reason_memory=AsyncMock(),
+        _initial_source_checkpoint=ResourceService._initial_source_checkpoint,
     )
     viking_fs = SimpleNamespace(
         _async_agfs=SimpleNamespace(pathlock_release=AsyncMock()),
@@ -626,7 +627,9 @@ async def test_uat_producer_payload_reaches_worker_without_persisting_token(
     async def preflight(_self, _source, *, feishu_access_token=None, **kwargs):
         assert feishu_access_token == "u-secret"
         assert kwargs["feishu_config"] is feishu_config
-        return SimpleNamespace(source_name=preflight_name, source_format="file", doc_type=source.split("/")[3])
+        return SimpleNamespace(
+            source_name=preflight_name, source_format="file", doc_type=source.split("/")[3]
+        )
 
     async def plan_source_job_target(*, source_info, **_kwargs):
         return root_uri, None, source_info.source_name is None, False
@@ -1122,6 +1125,7 @@ async def test_add_resource_processor_persists_final_uri_and_cleans_staged_sourc
             return_value={"status": "success", "root_uri": final_uri}
         ),
         _link_resource_reason_memory=AsyncMock(),
+        _initial_source_checkpoint=ResourceService._initial_source_checkpoint,
     )
     monkeypatch.setattr(
         "openviking.storage.queuefs.add_resource_processor.get_task_tracker",
@@ -1269,6 +1273,7 @@ async def test_add_resource_processor_collects_stats_without_registered_telemetr
         SimpleNamespace(
             execute_add_resource_job=AsyncMock(side_effect=execute_add_resource_job),
             _link_resource_reason_memory=AsyncMock(),
+            _initial_source_checkpoint=ResourceService._initial_source_checkpoint,
         ),
         QueueManager.ADD_RESOURCE,
         SimpleNamespace(_async_agfs=SimpleNamespace(pathlock_release=AsyncMock())),
@@ -1310,6 +1315,7 @@ async def test_add_resource_processor_replay_skips_lock_adopt_when_result_exists
             return_value={"status": "success", "root_uri": "viking://resources/duplicated"}
         ),
         _link_resource_reason_memory=AsyncMock(),
+        _initial_source_checkpoint=ResourceService._initial_source_checkpoint,
     )
     task_tracker = SimpleNamespace(
         create=AsyncMock(

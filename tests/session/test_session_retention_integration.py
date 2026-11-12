@@ -29,6 +29,16 @@ from openviking.storage.viking_fs import VikingFS
 from openviking_cli.exceptions import InternalError, UnavailableError
 
 
+@pytest.fixture(autouse=True)
+def _generation_selectors_follow_session_cluster_stub(monkeypatch):
+    from openviking.session import session as session_module
+
+    monkeypatch.setattr(
+        "openviking.config.generation.get_openviking_config",
+        lambda: session_module.get_openviking_config(),
+    )
+
+
 async def _write_archive(
     session,
     index: int,
@@ -384,7 +394,14 @@ async def test_phase2_processes_only_current_archive(
     )
     seen_message_ids: list[list[str]] = []
 
-    async def fake_summary(messages, latest_archive_overview=""):
+    async def fake_summary(
+        messages,
+        latest_archive_overview="",
+        *,
+        session_window_context=128_000,
+        summary_token_ratio=0.25,
+        reasoning_effort=None,
+    ):
         assert latest_archive_overview == ""
         seen_message_ids.append([message.id for message in messages])
         return "# Session Summary\n\n## Current State\nCurrent archive is covered."
@@ -452,7 +469,14 @@ async def test_phase2_retry_does_not_repeat_completed_current_archive_steps(
     summary_inputs: list[list[str]] = []
     long_term_inputs: list[list[str]] = []
 
-    async def fake_summary(messages, latest_archive_overview=""):
+    async def fake_summary(
+        messages,
+        latest_archive_overview="",
+        *,
+        session_window_context=128_000,
+        summary_token_ratio=0.25,
+        reasoning_effort=None,
+    ):
         assert latest_archive_overview == ""
         summary_inputs.append([message.id for message in messages])
         return "# Session Summary\n\n## Current State\nCurrent message is summarized."
@@ -642,8 +666,16 @@ async def test_phase2_persists_checkpoint_from_same_summary_call(
         messages,
         latest_archive_overview="",
         checkpoint_requests=None,
+        session_window_context=128_000,
+        summary_token_ratio=0.25,
+        reasoning_effort=None,
     ):
         nonlocal calls
+        assert (session_window_context, summary_token_ratio, reasoning_effort) == (
+            128_000,
+            0.25,
+            None,
+        )
         calls += 1
         assert latest_archive_overview == ""
         assert [message.id for message in messages] == ["u1", "a1"]
@@ -737,7 +769,7 @@ async def test_wm_creation_returns_two_products_in_one_model_call(
     session._vlm_resolver = SimpleNamespace(get_vlm=AsyncMock(return_value=vlm))
     monkeypatch.setattr(
         "openviking.session.session.get_openviking_config",
-        lambda: SimpleNamespace(vlm=vlm),
+        lambda: SimpleNamespace(vlm=vlm, output_language_override=""),
     )
     anchor = _text_message("secret-anchor-id", "user", "investigate the outage")
     source = _text_message("secret-source-id", "assistant", "queried the service")
@@ -809,7 +841,7 @@ async def test_wm_creation_detects_language_from_multiline_user_message(client, 
     session._vlm_resolver = SimpleNamespace(get_vlm=AsyncMock(return_value=vlm))
     monkeypatch.setattr(
         "openviking.session.session.get_openviking_config",
-        lambda: SimpleNamespace(vlm=vlm),
+        lambda: SimpleNamespace(vlm=vlm, output_language_override=""),
     )
 
     result = await session._generate_archive_summary_async(
@@ -853,7 +885,9 @@ async def test_wm_creation_retries_over_budget_summary_with_reasoning_effort(
     monkeypatch.setattr(
         "openviking.session.session.get_openviking_config",
         lambda: SimpleNamespace(
-            vlm=vlm, memory=SimpleNamespace(summary_budget_retry_enabled=retry_enabled)
+            vlm=vlm,
+            output_language_override="",
+            memory=SimpleNamespace(summary_budget_retry_enabled=retry_enabled),
         ),
     )
 
@@ -927,7 +961,7 @@ async def test_wm_update_returns_two_products_in_one_model_call(
     session._vlm_resolver = SimpleNamespace(get_vlm=AsyncMock(return_value=vlm))
     monkeypatch.setattr(
         "openviking.session.session.get_openviking_config",
-        lambda: SimpleNamespace(vlm=vlm),
+        lambda: SimpleNamespace(vlm=vlm, output_language_override=""),
     )
     source = _text_message("source-id", "assistant", "compared the logs")
     prior = """# Working Memory

@@ -685,7 +685,9 @@ async def test_compile_api_client_session_protocol_retry_and_cancellation(
     assert queried.result["meta"]["request"].get("args", {}) == public_args
 
     await queue.dequeue()  # Same target rotates, including across users.
-    assert (await state(waiting)).status == TaskStatus.PENDING
+    # Work admission marks the task RUNNING before target admission; no Runtime
+    # submission is allowed while the original owner still holds the target.
+    assert (await state(waiting)).status == TaskStatus.RUNNING
     assert waiting.task_id not in submitted
     assert await tracker.has_work(
         waiting.task_id,
@@ -714,14 +716,19 @@ async def test_compile_api_client_session_protocol_retry_and_cancellation(
         tasks = ExternalTaskService()
         tasks.register(CompileService(service._config, tasks, SimpleNamespace()))
         queue.set_dequeue_handler(ExternalTaskProcessor(tasks))
-        await tasks.restore_tasks(await manager.prepare_task_tracking(tracker))
+        await manager.prepare_task_tracking(tracker)
+        # Target reservations restore from queued tasks even for durable Work,
+        # matching OpenVikingService.start rather than the obsolete helper result.
+        await tasks.restore_tasks(
+            await manager.get_queued_tasks(tracker, QueueManager.EXTERNAL_TASK)
+        )
         # Recover processing behind pending work to prove recovery reserves the target first.
         backend.pending.extend(backend.processing.values())
         backend.processing.clear()
 
     await queue.dequeue()
     assert waiting.task_id not in submitted
-    assert (await state(waiting)).status == TaskStatus.PENDING
+    assert (await state(waiting)).status == TaskStatus.RUNNING
     if finish == "restart_cancel":
         await tracker.cancel(first.task_id, account_id="acct", user_id="alice")
     release.set()

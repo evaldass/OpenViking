@@ -93,9 +93,12 @@ class TestOpenAIRerankClient:
         }
         mock_response.raise_for_status = MagicMock()
 
-        with patch(
-            "openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response
-        ), patch("openviking.models.rerank.openai_rerank.logger.warning") as warning:
+        with (
+            patch(
+                "openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response
+            ),
+            patch("openviking.models.rerank.openai_rerank.logger.warning") as warning,
+        ):
             result = client.rerank_batch("query", ["doc1", "doc2", "doc3"])
 
         assert result == [0.9, 0.0, 0.7]
@@ -268,9 +271,14 @@ class TestRerankConfig:
         with pytest.raises(ValidationError):
             RerankConfig(provider="openai", api_base="https://example.com/rerank")
 
+    def test_default_provider_is_auto_detected(self):
+        config = RerankConfig()
+        assert config.provider is None
+        assert config._effective_provider() is None
+
     def test_unknown_provider_raises_value_error(self):
         with pytest.raises(ValidationError, match="provider"):
-            RerankConfig(provider="unknown", api_key="key")
+            RerankConfig(provider="unknown")
 
     def test_explicit_provider_requires_its_own_credentials(self):
         with pytest.raises(ValidationError, match="api_key"):
