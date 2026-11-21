@@ -20,7 +20,8 @@ def _fail_package_summaries(monkeypatch, name):
 
     async def fail_selected(self, file_path, *args, **kwargs):
         if any(file_path.endswith(f"/skills/{name}/{path}") for path in failed_paths):
-            raise ValueError("injected file summary failure")
+            # Simulate a model failure, not the deliberately fatal format/data ValueError.
+            raise RuntimeError("injected file summary failure")
         return await original(self, file_path, *args, **kwargs)
 
     monkeypatch.setattr(SemanticProcessor, "_generate_single_file_summary", fail_selected)

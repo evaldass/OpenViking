@@ -1346,6 +1346,10 @@ class SemanticTreeExecutor:
             self._record_skill_failure(file_path, e)
             summary_dict = {"name": file_name, "summary": ""}
             semantic_succeeded = False
+            if self._context_type == "skill":
+                # A failed package file must not publish an empty search entry.
+                # Continue sibling execution to report all failed files together.
+                need_vectorize = False
         finally:
             self._stats.done_nodes += 1
             self._stats.in_progress_nodes = max(0, self._stats.in_progress_nodes - 1)
