@@ -31,9 +31,9 @@ import { Switch } from '#/shared/ui/switch'
 import { Textarea } from '#/shared/ui/textarea'
 import { cn } from '#/shared/lib/utils'
 
-import type { JsonSchema } from '../-lib/model'
-import { cleanSchemaArguments, toRjsfSchema } from '../-lib/schema'
-import type { SchemaFormObject } from '../-lib/schema'
+import type { JsonSchema } from '../lib/model'
+import { cleanSchemaArguments, toRjsfSchema } from '../lib/schema'
+import type { SchemaFormObject } from '../lib/schema'
 
 type SchemaArgumentsFormProps = {
   errors: RJSFValidationError[]
