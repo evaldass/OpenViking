@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { act } from 'react';
-import { mount, settle } from './helpers/module-dom.mjs';
+import { mount, ok, settle } from './helpers/module-dom.mjs';
 import {
   ALICE,
   BOB,
   ROOT,
   USER,
+  backend,
+  directory,
   harness,
   loadPage,
 } from './helpers/current-user-tree.mjs';
@@ -46,6 +48,13 @@ test('current display mode leaves explicit Client listing requests native', asyn
 
 test('current mode expands the user group locally and loads concrete directories normally', async () => {
   const state = harness({
+    // Return a finite tree; normal expansion follows the single local user row
+    // until it reaches two concrete child directories.
+    fetch: backend((call) =>
+      call.path.endsWith('/fs/ls') && call.uri === ALICE
+        ? ok([directory(`${ALICE}/resources`), directory(`${ALICE}/memories`)])
+        : undefined,
+    ),
     rootUri: ROOT,
     provider: { userRootMode: 'current' },
   });
@@ -53,16 +62,14 @@ test('current mode expands the user group locally and loads concrete directories
   try {
     await act(() => state.tree.toggleExpand({ uri: USER }));
     await settle();
-    assert.deepEqual(state.lists(), [ROOT]);
-    assert.deepEqual(state.uris(), [USER, ALICE]);
+    assert.deepEqual(state.lists(), [ROOT, ALICE]);
+    assert.deepEqual(state.uris().slice(0, 2), [USER, ALICE]);
     assert.equal(
       state.tree.rows.find((row) => row.uri === ALICE).name,
       'alice@example.com',
     );
-    await act(() => state.tree.toggleExpand({ uri: ALICE }));
-    await settle();
-    assert.deepEqual(state.lists(), [ROOT, ALICE]);
     assert.ok(state.uris().includes(`${ALICE}/resources`));
+    assert.ok(state.uris().includes(`${ALICE}/memories`));
     await act(() => state.tree.open(BOB));
     await act(() => state.tree.open('viking://resources'));
     assert.deepEqual(state.lists(), [ROOT, ALICE, BOB, 'viking://resources']);

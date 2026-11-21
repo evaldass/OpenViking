@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -646,7 +647,7 @@ def test_init_otel_log_handler_forwards_headers_to_grpc_exporter(monkeypatch):
     monkeypatch.setattr(
         logger_module,
         "LoggingHandler",
-        lambda **kwargs: SimpleNamespace(**kwargs),
+        lambda *, level, logger_provider: logging.NullHandler(level),
     )
     monkeypatch.setattr(
         logger_module,
@@ -703,7 +704,7 @@ def test_init_otel_log_handler_forwards_headers_to_http_exporter(monkeypatch):
     monkeypatch.setattr(
         logger_module,
         "LoggingHandler",
-        lambda **kwargs: SimpleNamespace(**kwargs),
+        lambda *, level, logger_provider: logging.NullHandler(level),
     )
     monkeypatch.setattr(
         logger_module,
@@ -886,7 +887,8 @@ async def test_embedding_handler_binds_registered_operation_telemetry(monkeypatc
 
     provider = SimpleNamespace(bind=Mock(return_value=_TelemetryAwareEmbedder()))
     handler = TextEmbeddingHandler(
-        _DummyVikingDB(), embedding_provider=provider,
+        _DummyVikingDB(),
+        embedding_provider=provider,
     )
     payload = {
         "data": json.dumps(

@@ -3,6 +3,7 @@
 import asyncio
 import json
 from datetime import datetime, timedelta
+from threading import Event
 from time import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -559,6 +560,7 @@ async def test_compile_admission_rejects_invalid_inputs_before_publication(
     )
 
 
+@pytest.mark.parametrize("builtin_skill", [False, True])
 @pytest.mark.parametrize(
     ("role", "runtime_failure"),
     [(role, None) for role in (Role.USER, Role.ADMIN, Role.GLOBAL)]
@@ -566,7 +568,7 @@ async def test_compile_admission_rejects_invalid_inputs_before_publication(
     + [(Role.USER, (method, 404)) for method in ("create", "get", "cancel")],
 )
 async def test_configuration_runs_full_isolation_and_failure_recovery(
-    service, app, client, monkeypatch, role, runtime_failure
+    service, app, client, monkeypatch, role, runtime_failure, builtin_skill
 ):
     ensure_target = service.fs.ensure_compile_target
     runtime_client = service.compile._client
@@ -575,33 +577,50 @@ async def test_configuration_runs_full_isolation_and_failure_recovery(
     commit = AsyncMock(wraps=service.viking_fs.commit)
     monkeypatch.setattr(service.viking_fs, "commit", commit)
     monkeypatch.setattr(service.fs, "ensure_compile_target", AsyncMock(wraps=ensure_target))
-    service.fs.finalize_compile_directories.return_value = False
+    tag_can_finish = Event()
+
+    async def finalize_tags(*args, **kwargs):
+        # Keep the native target admission lease through the nested-target
+        # request, then let the real tag work release it before teardown.
+        while not tag_can_finish.is_set():
+            await asyncio.sleep(0.01)
+        return True
+
+    service.fs.finalize_compile_directories.side_effect = finalize_tags
     owner = {"account_id": ctx.account_id, "user_id": ctx.user.user_id}
     store = service.compile.lifecycle.store
     tracker = get_task_tracker()
 
     inputs = {**SAVED_INPUTS, "to": TARGET.replace("_", " ")}
-    create_started_at = time()
-    created = await client.post("/api/v1/compile/create", json=inputs)
-    create_finished_at = time()
-    assert created.status_code == 200, created.text
-    assert created.json()["result"] == {"compile_name": inputs["compile_name"]}
-    compile_name = created.json()["result"]["compile_name"]
-    state = await store.get(ctx.account_id, ctx.user.user_id, compile_name)
-    assert state["to"] == TARGET
-    assert not await service.viking_fs.exists(inputs["to"], ctx=ctx)
-    created_at = state["task_first_create_time"]
-    assert create_started_at <= created_at <= create_finished_at
-    assert state["last_run_time"] is None
-    assert await store.list_runs(ctx.account_id, ctx.user.user_id, compile_name) == []
-    assert runtime.calls == []
-    service.fs.ensure_compile_target.assert_awaited_once_with(TARGET, ctx)
-    assert "conflict_num" not in state
+    if not builtin_skill:
+        skill = f"viking://user/{ctx.user.user_id}/skills/compile-lifecycle-custom"
+        admin = RequestContext(user=ctx.user, role=Role.ADMIN)
+        await service.viking_fs.write_file(f"{skill}/SKILL.md", "Build a wiki", ctx=admin)
+        inputs["skill"] = skill
+    try:
+        create_started_at = time()
+        created = await client.post("/api/v1/compile/create", json=inputs)
+        create_finished_at = time()
+        assert created.status_code == 200, created.text
+        assert created.json()["result"] == {"compile_name": inputs["compile_name"]}
+        compile_name = created.json()["result"]["compile_name"]
+        state = await store.get(ctx.account_id, ctx.user.user_id, compile_name)
+        assert state["to"] == TARGET
+        assert not await service.viking_fs.exists(inputs["to"], ctx=ctx)
+        created_at = state["task_first_create_time"]
+        assert create_started_at <= created_at <= create_finished_at
+        assert state["last_run_time"] is None
+        assert await store.list_runs(ctx.account_id, ctx.user.user_id, compile_name) == []
+        assert runtime.calls == []
+        service.fs.ensure_compile_target.assert_awaited_once_with(TARGET, ctx)
+        assert "conflict_num" not in state
 
-    nested = await client.post("/api/v1/compile", json={**INPUTS, "to": TARGET + "/child"})
-    assert nested.status_code == 409, nested.text
-    assert "Choose another directory" in nested.json()["error"]["message"]
-    assert runtime.calls == []
+        nested = await client.post("/api/v1/compile", json={**INPUTS, "to": TARGET + "/child"})
+        assert nested.status_code == 409, nested.text
+        assert "Choose another directory" in nested.json()["error"]["message"]
+        assert runtime.calls == []
+    finally:
+        tag_can_finish.set()
 
     async def execute(payload, key):
         response = await client.post(
@@ -708,7 +727,9 @@ async def test_configuration_runs_full_isolation_and_failure_recovery(
     state_before_full = await store.get(ctx.account_id, ctx.user.user_id, compile_name)
     assert state_before_full["progress"]["model_name"] == "model-a"
     runs_before_full = await store.list_runs(ctx.account_id, ctx.user.user_id, compile_name)
-    full = await execute({**INPUTS, "to": inputs["to"]}, "compile-full-execution")
+    full = await execute(
+        {**INPUTS, "to": inputs["to"], "skill": inputs["skill"]}, "compile-full-execution"
+    )
     assert full.status == "completed", full.error
     assert runtime.calls[-1]["to"] == TARGET
     assert runtime.calls[-1]["args"]["changes"]["head"] is None

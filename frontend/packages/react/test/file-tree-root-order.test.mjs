@@ -128,7 +128,15 @@ test('FileBrowser marks only shared resources and labels an expanded empty folde
   try {
     await expand(user);
     await expand(agent);
-    assert.equal(row(`${endpoints}::empty`), null);
+    assert.ok(
+      row(`${endpoints}::empty`),
+      'one-child folders expand automatically',
+    );
+    await expand(endpoints);
+    assert.ok(
+      !row(`${endpoints}::empty`),
+      'explicit collapse hides the empty row',
+    );
     await expand(endpoints);
     assert.match(row(`${endpoints}::empty`).textContent, /该文件夹为空/);
     assert.doesNotMatch(row(`${endpoints}::empty`).textContent, /暂无文件/);

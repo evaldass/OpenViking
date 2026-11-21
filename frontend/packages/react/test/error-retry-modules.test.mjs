@@ -36,6 +36,7 @@ const browser = () => ({
   rows: [],
   dashboards: new Map(),
   isReady: true,
+  treeMonitoring: [],
   actions: {
     refresh: async () => {},
     select: noop,

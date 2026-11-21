@@ -46,8 +46,7 @@ async def main():
             }
         ).encode()
         registry.write_bytes(raw)
-        # Existing accounts now require their user registries: missing files
-        # are deliberately fatal rather than a silently writable empty baseline.
+        # Seed legacy user registries explicitly and verify their exact bytes.
         user_registries = []
         for account_id in ("chatwoot:1", "valid-account"):
             users = workspace / "viking" / account_id / "_system/users.json"
