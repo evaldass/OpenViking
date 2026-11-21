@@ -329,3 +329,8 @@ async def test_resource_rm_authorizes_the_whole_subtree_at_its_root(storage, all
             await service._rm(RESOURCE_URI, ctx=storage.ctx, recursive=True)
         storage.agfs.rm.assert_not_awaited()
         storage.vector.delete_uris.assert_not_awaited()
+        storage.vector.count.assert_not_awaited()
+        storage.agfs.pathlock_release.assert_not_awaited()
+        storage.agfs.pathlock_acquire_tree.assert_not_awaited()
+        storage.agfs.pathlock_acquire_exact.assert_not_awaited()
+    storage.acl.resolve_many.assert_awaited_once_with([RESOURCE_URI], storage.ctx)

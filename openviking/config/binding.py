@@ -68,8 +68,20 @@ def _build_account(settings: Optional[dict]) -> AccountConfig:
     visible. Only field names are logged, never values.
     """
     sparse = settings or {}
+    legacy_acl = sparse.get("resource_acl")
+    if legacy_acl is not None:
+        if not isinstance(legacy_acl, dict) or set(legacy_acl) - {"auto_protect_new_content"}:
+            raise ValueError("Invalid legacy resource_acl account setting")
+        enabled = legacy_acl.get("auto_protect_new_content", False)
+        if not isinstance(enabled, bool):
+            raise ValueError("resource_acl.auto_protect_new_content must be a boolean")
+        sparse = dict(sparse)
+        sparse.pop("resource_acl")
+        if "acl" not in sparse:
+            sparse["acl"] = {"enabled": enabled}
+        logger.warning("Migrating deprecated account setting field: resource_acl")
     warn_unknown_config_fields(data=sparse, model=AccountConfig, logger=logger)
-    return AccountConfig.model_validate(filter_runtime_fields(AccountConfig, settings))
+    return AccountConfig.model_validate(filter_runtime_fields(AccountConfig, sparse))
 
 
 def _validate_request(patch: dict, is_account: bool, creating: bool) -> None:

@@ -38,6 +38,9 @@ class _FakeConfig:
                     "lock_expire_secs": 30.0,
                 }
             ),
+            coordination=SimpleNamespace(
+                model_dump=lambda mode, exclude_none=False: {"provider": "memory"}
+            ),
         ),
         skip_process_lock=False,
     )
@@ -107,6 +110,7 @@ async def test_build_ragfs_binding_config_works_inside_running_event_loop(monkey
             "lock_timeout_secs": 0.0,
             "lock_expire_secs": 30.0,
         },
+        "coordination": {"provider": "memory"},
         "log": {"level": "INFO", "output": "stdout"},
         "encryption": {
             "root_key": b"k" * 32,
@@ -252,7 +256,12 @@ async def test_close_releases_data_dir_lock_after_successful_cleanup(monkeypatch
     service._initialized = True
     monkeypatch.setattr(service, "_release_data_dir_lock", lambda: released.append(True))
 
+    from unittest.mock import AsyncMock
+
+    tracker = SimpleNamespace(close=AsyncMock())
+    monkeypatch.setattr("openviking.service.core.get_task_tracker", lambda: tracker)
     await service.close()
+    tracker.close.assert_awaited_once()
 
     assert service._initialized is False
     assert released == [True]

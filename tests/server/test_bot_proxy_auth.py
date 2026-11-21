@@ -697,6 +697,9 @@ async def test_compile_api_client_session_protocol_retry_and_cancellation(
         backend.unmount("/queue")
         backend.mount("queuefs", "/queue", queue_config)
         await manager.prepare_task_tracking(tracker)
+        await tasks.restore_tasks(
+            await manager.get_queued_tasks(tracker, QueueManager.EXTERNAL_TASK)
+        )
         recovered = await queue.dequeue_raw()
         assert json.loads(recovered["data"])["task_id"] == first.task_id
         worker = asyncio.create_task(queue.process_dequeued(recovered))

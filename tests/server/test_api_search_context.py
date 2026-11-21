@@ -17,6 +17,11 @@ class _FakeFindResult:
         self.resources = []
         self.skills = []
 
+    def to_dict(self, **kwargs):
+        return FindResult(
+            memories=self.memories, resources=self.resources, skills=self.skills
+        ).to_dict(**kwargs)
+
 
 def _memory(uri: str, score: float = 0.9, abstract: str = "", level: int = 2):
     return MatchedContext(

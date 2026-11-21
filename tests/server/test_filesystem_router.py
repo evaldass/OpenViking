@@ -20,7 +20,7 @@ from openviking.server.routers import filesystem
 from openviking.service.fs_service import FSService, ListingPage
 from openviking.storage.queuefs.queue_manager import get_queue_manager
 from openviking.system_assets import builtin_memory_templates_dir
-from openviking_cli.exceptions import InvalidURIError
+from openviking_cli.exceptions import InvalidURIError, PermissionDeniedError
 from openviking_cli.session.user_id import UserIdentifier
 
 
@@ -161,7 +161,22 @@ async def test_file_only_transfer_builds_searchable_target_index(
     if operation == "cp":
         await service.fs.cp(source, target, recursive=recursive, ctx=ctx)
     else:
-        await service.fs.mv(source, target, ctx=ctx)
+        # Packaged system inputs are immutable, even for ROOT. Exercise move
+        # indexing from an mutable custom FILE_ONLY copy without weakening that policy.
+        immutable_file = f"{source}/SKILL.md" if recursive else source
+        original = await service.viking_fs.read_file(immutable_file, ctx=ctx)
+        denied_target = "viking://resources/denied-system-move"
+        with pytest.raises(PermissionDeniedError):
+            await service.fs.mv(source, denied_target, ctx=ctx)
+        assert not await service.viking_fs.exists(denied_target, ctx=ctx)
+        mutable_source = f"{SYSTEM_MEMORY_CUSTOM_ROOT}/file-only-move-input"
+        if not recursive:
+            mutable_source += ".md"
+        await service.viking_fs.cp(source, mutable_source, recursive=recursive, ctx=ctx)
+        mutable_file = f"{mutable_source}/SKILL.md" if recursive else mutable_source
+        assert await service.viking_fs.vector_store.fetch_by_uri(mutable_file, ctx=ctx) is None
+        await service.fs.mv(mutable_source, target, ctx=ctx)
+        assert await service.viking_fs.read_file(immutable_file, ctx=ctx) == original
     await asyncio.wait_for(get_queue_manager().wait_complete(), 30)
 
     record = await service.viking_fs.vector_store.fetch_by_uri(indexed_file, ctx=ctx)

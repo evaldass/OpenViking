@@ -13,6 +13,7 @@ from openviking.storage.index_consistency import IndexConsistencyReport
 from openviking_cli.exceptions import InvalidArgumentError
 from openviking_cli.session.user_id import UserIdentifier
 from openviking_cli.utils.config.agent_evolution_config import AgentEvolutionConfig
+from openviking_cli.utils.config.open_viking_config import OpenVikingConfig
 from openviking_cli.utils.config.vlm_config import VLMConfig
 
 
@@ -41,6 +42,7 @@ def test_service_passes_queue_worker_concurrency_to_storage(monkeypatch) -> None
             external_task=SimpleNamespace(max_concurrent=6),
         ),
         git=object(),
+        encryption=OpenVikingConfig.from_dict({}).encryption,
     )
 
     monkeypatch.setattr(
@@ -63,6 +65,7 @@ def test_service_passes_queue_worker_concurrency_to_storage(monkeypatch) -> None
 
     assert storage_calls[0][1]["max_concurrent_external_parse"] == 9
     assert storage_calls[0][1]["max_concurrent_add_resource"] == 7
+    assert storage_calls[0][1]["max_concurrent_reindex"] == 4
     assert storage_calls[0][1]["max_concurrent_session_commit"] == 5
     assert storage_calls[0][1]["max_concurrent_external_task"] == 6
 

@@ -1677,3 +1677,17 @@ async def test_processing_time_persists_and_restored_active_tasks_are_unknown(mo
         task.task_id, **_owner_kwargs()
     )
     assert restored.processing_seconds == 22
+
+
+@pytest.mark.parametrize(
+    "other_owner",
+    [_owner_kwargs(account_id="other-acme"), _owner_kwargs(user_id="bob")],
+)
+async def test_connector_import_cancellation_preserves_owner_boundary(tracker, other_owner):
+    task = await tracker.create("connector_import", **_owner_kwargs())
+    await tracker.start(task.task_id)
+    assert await tracker.cancel(task.task_id, **other_owner) is None
+    owned = await tracker.get(task.task_id, **_owner_kwargs())
+    assert owned is not None and owned.status == TaskStatus.RUNNING
+    cancelled = await tracker.cancel(task.task_id, **_owner_kwargs())
+    assert cancelled is not None and cancelled.status == TaskStatus.CANCELLED

@@ -93,15 +93,20 @@ class TestOpenAIRerankClient:
         }
         mock_response.raise_for_status = MagicMock()
 
-        with patch(
-            "openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response
-        ), patch("openviking.models.rerank.openai_rerank.logger.warning") as warning:
+        with (
+            patch(
+                "openviking.models.rerank.openai_rerank.requests.post", return_value=mock_response
+            ),
+            patch("openviking.models.rerank.openai_rerank.logger.info") as log,
+        ):
             result = client.rerank_batch("query", ["doc1", "doc2", "doc3"])
 
         assert result == [0.9, 0.0, 0.7]
-        warning.assert_called_once_with(
-            "[OpenAIRerankClient] Sparse rerank results: expected=%s actual=%s", 3, 2
-        )
+        log.assert_called_once()
+        msg, total, returned = log.call_args.args
+        assert "using zero scores for missing items" in msg
+        assert (total, returned) == (3, 2)
+        assert log.call_args.kwargs["extra"] == {"total": 3, "degraded": True}
 
     def test_rerank_batch_out_of_bounds_index_returns_none(self):
         """An index that is >= len(documents) should return None."""
@@ -268,9 +273,14 @@ class TestRerankConfig:
         with pytest.raises(ValidationError):
             RerankConfig(provider="openai", api_base="https://example.com/rerank")
 
+    def test_default_provider_is_auto_detected(self):
+        config = RerankConfig()
+        assert config.provider is None
+        assert config._effective_provider() is None
+
     def test_unknown_provider_raises_value_error(self):
         with pytest.raises(ValidationError, match="provider"):
-            RerankConfig(provider="unknown", api_key="key")
+            RerankConfig(provider="unknown")
 
     def test_explicit_provider_requires_its_own_credentials(self):
         with pytest.raises(ValidationError, match="api_key"):

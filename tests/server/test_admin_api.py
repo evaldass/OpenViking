@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse
 from openviking.config.binding import manager_over_source
 from openviking.config.source import MemoryConfigSource
 from openviking.pyagfs.exceptions import AGFSNotFoundError
+from openviking.server.api_keys.models import AccountInfo
 from openviking.server.app import create_app
 from openviking.server.config import ServerConfig, UserConfig
 from openviking.server.dependencies import set_service
@@ -84,8 +85,13 @@ class _FakeAGFS:
         return self._files[path]
 
     def stat(self, path, **_kwargs):
-        content = self.read(path)
-        return {"size": len(content), "modTime": hash(content)}
+        if path in self._files:
+            content = self._files[path]
+            raw = content.encode("utf-8") if isinstance(content, str) else content
+            return {"isDir": False, "size": len(raw), "modTime": hashlib.sha256(raw).hexdigest()}
+        if path in self._dirs:
+            return {"isDir": True, "size": 0, "modTime": "directory"}
+        raise AGFSNotFoundError(path)
 
     def write(self, path, content, **_kwargs):
         self.ensure_parent_dirs(path)
@@ -2668,7 +2674,7 @@ async def test_delete_account(
     from itertools import islice
     from types import SimpleNamespace
 
-    from openviking.storage.expr import Eq
+    from openviking.storage.expr import And, Eq
     from openviking.storage.queuefs.queue_manager import QueueManager
     from openviking.storage.vectordb_adapters.local_adapter import LocalCollectionAdapter
     from openviking.storage.viking_vector_index_backend import _SingleAccountBackend
@@ -2705,11 +2711,18 @@ async def test_delete_account(
         for record_id in ids:
             rows.pop(record_id, None)
 
-    adapter._collection = SimpleNamespace(delete_data=delete_data)
+    def matches(row, expression):
+        if isinstance(expression, Eq):
+            return row.get(expression.field) == expression.value
+        if isinstance(expression, And):
+            return all(matches(row, condition) for condition in expression.conds)
+        raise AssertionError(f"unexpected deletion filter: {expression!r}")
+
+    adapter._collection = SimpleNamespace(delete_data=delete_data, close=lambda: None)
     scan_rows = rows if index_updates_immediately else indexed_rows
     adapter.query = lambda *, filter, limit, offset=0, **kwargs: list(
         islice(
-            (row for row in scan_rows.values() if row[filter.field] == filter.value),
+            (row for row in scan_rows.values() if matches(row, filter)),
             offset,
             offset + limit,
         )
@@ -2912,6 +2925,40 @@ async def test_delete_account_retries_cleanup_and_retires_ttl_callbacks(
         assert not [key async for key in engine.redis.scan_iter(match=prefix + "*")]
     finally:
         await engine.aclose()
+
+
+async def test_delete_legacy_nonconforming_account(
+    lightweight_admin_app: FastAPI,
+    lightweight_admin_client: httpx.AsyncClient,
+):
+    """ROOT can delete legacy account ids that predate account id validation."""
+    acct = "chatwoot:1"
+    manager = lightweight_admin_app.state.api_key_manager
+
+    class _DeletionService:
+        async def delete(self, account_id, *, actor):
+            del actor
+            await manager.delete_account(account_id)
+            return {"deleted": True}
+
+    lightweight_admin_app.state.deletion_service = _DeletionService()
+    manager._store._accounts[acct] = AccountInfo(
+        created_at="2026-03-30T08:54:32.006457+00:00",
+        users={},
+    )
+    await manager._store._save_accounts_json(updated_account_ids={acct})
+    await manager._store._save_users_json(acct, replace_existing=True)
+
+    resp = await lightweight_admin_client.delete(
+        f"/api/v1/admin/accounts/{acct}", headers=root_headers()
+    )
+    assert resp.status_code == 202
+    assert resp.json()["result"]["deleted"] is True
+
+    resp = await lightweight_admin_client.get("/api/v1/admin/accounts", headers=root_headers())
+    accounts = resp.json()["result"]
+    account_ids = {a["account_id"] for a in accounts}
+    assert acct not in account_ids
 
 
 async def test_create_duplicate_account_fails(admin_client: httpx.AsyncClient):

@@ -45,6 +45,10 @@ def _remove_header(request: Request, name: bytes) -> None:
     request.scope["headers"] = [
         (key, value) for key, value in scope_headers if key.lower() != name.lower()
     ]
+    # Request.headers may already have been read while extracting credentials.
+    # Invalidate that cached view after replacing the scope's raw header list.
+    if hasattr(request, "_headers"):
+        del request._headers
 
 
 class ApiKeyAuthPlugin(AuthPlugin):
@@ -126,9 +130,7 @@ class ApiKeyAuthPlugin(AuthPlugin):
 
         recorded_fp = record.authorizing_key_fp
         manager = request.app.state.api_key_manager
-        current_fp = await manager.get_user_key_fingerprint(
-            record.account_id, record.user_id
-        )
+        current_fp = await manager.get_user_key_fingerprint(record.account_id, record.user_id)
         if not recorded_fp or not current_fp or not hmac.compare_digest(recorded_fp, current_fp):
             raise UnauthenticatedError(
                 "OAuth token's authorizing API key has been rotated or revoked; "

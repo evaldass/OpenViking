@@ -54,10 +54,15 @@ async def test_write_updates_memory_file_and_parent_overview(service, monkeypatc
         e for e in events if e.event_name == "file_mutation" and e.payload["uri"] == memory_uri
     ]
     assert len(writes) == 1
-    task = await get_task_tracker().get(writes[0].payload["task_id"], ctx.account_id, ctx.user.user_id)
+    task = await get_task_tracker().get(
+        writes[0].payload["task_id"], ctx.account_id, ctx.user.user_id
+    )
     assert task is not None
     assert task.status == TaskStatus.COMPLETED
     assert task.resource_id == memory_uri
+    assert isinstance(writes[0].payload["task_id"], str)
+    assert writes[0].payload["task_id"]
+    assert "task_id" not in result
     assert writes[0].payload["memory_type"] == "preferences"
     assert writes[0].payload["change_type"] == "modified"
 

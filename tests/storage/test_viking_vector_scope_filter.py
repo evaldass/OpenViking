@@ -1,6 +1,7 @@
 # Copyright (c) 2026 Beijing Volcano Engine Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
+import threading
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -79,6 +80,18 @@ class _RecordingAdapter:
     def search_by_random(self, *, filter, **kwargs):
         self.filter = filter
         return []
+
+
+def _single_account_backend(async_adapter, account_id: str | None):
+    backend = object.__new__(_SingleAccountBackend)
+    backend._bound_account_id = account_id
+    backend._operation_condition = threading.Condition()
+    backend._operations = {}
+    backend._retired = False
+    backend._async_adapter = async_adapter
+    backend._adapter = SimpleNamespace(mode="local", config={})
+    backend._mode = backend._adapter.mode
+    return backend
 
 
 @pytest.mark.asyncio
