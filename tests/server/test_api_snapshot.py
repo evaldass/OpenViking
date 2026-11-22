@@ -270,6 +270,9 @@ async def test_restore_acl_and_reindex_identity(client_with_resource, service, m
         acl_mode=AclMode.RESTRICTED,
     )
     await service.fs.write(file_uri, content="v1", mode="create", wait=True, ctx=admin)
+    async with asyncio.timeout(30):
+        queue = await service.resources.wait_processed()
+    assert all(status["error_count"] == 0 for status in queue.values()), queue
     v1 = await service.fs.commit(message="acl restore v1", paths=[root], ctx=writer)
 
     assert await service.fs.show(v1["commit_oid"], path=file_uri, ctx=reader)
@@ -278,6 +281,9 @@ async def test_restore_acl_and_reindex_identity(client_with_resource, service, m
     assert snapshot["commit_oid"] == v1["commit_oid"]
 
     await service.fs.write(file_uri, content="v2", mode="replace", wait=True, ctx=writer)
+    async with asyncio.timeout(30):
+        queue = await service.resources.wait_processed()
+    assert all(status["error_count"] == 0 for status in queue.values()), queue
     await service.fs.commit(message="acl restore v2", paths=[root], ctx=writer)
 
     with pytest.raises(PermissionDeniedError):
@@ -297,6 +303,9 @@ async def test_restore_acl_and_reindex_identity(client_with_resource, service, m
     assert [item["path"] for item in write_plan["diff"]["to_write"]] == ["document.md"]
 
     await service.fs.write(extra_uri, content="remove", mode="create", wait=True, ctx=admin)
+    async with asyncio.timeout(30):
+        queue = await service.resources.wait_processed()
+    assert all(status["error_count"] == 0 for status in queue.values()), queue
     await service.fs.commit(message="acl restore delete", paths=[root], ctx=admin)
     delete_plan = await service.fs.restore(
         project_dir=root,

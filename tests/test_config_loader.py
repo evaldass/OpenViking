@@ -386,7 +386,7 @@ def test_openviking_config_ignores_unknown_fields(monkeypatch, caplog):
     monkeypatch.setenv(OPENVIKING_CONFIG_ENV, "/tmp/codex-no-config.json")
     logger = logging.getLogger("openviking_cli.utils.config.open_viking_config")
     monkeypatch.setattr(logger, "handlers", [*logger.handlers, caplog.handler])
-    caplog.set_level(logging.WARNING, logger=logger.name)
+    caplog.set_level(logging.INFO, logger=logger.name)
     config = OpenVikingConfig.from_dict(
         {
             "retired_section": {"api_key": "test-secret"},
@@ -434,17 +434,17 @@ def test_openviking_config_ignores_unknown_fields(monkeypatch, caplog):
     assert "retired_field" not in dumped["glob"]
     assert "unknown_memory_field" not in dumped["memory"]
     assert "cache" not in dumped["storage"]["agfs"]
-    assert "Ignoring unknown config field 'storage.agfs.cache'" in caplog.text
-    assert "Ignoring unknown config field 'parsers.markdown.unknown_field'" in caplog.text
-    assert "Ignoring unknown config field 'vlm.credentials[0].retired_field'" in caplog.text
-    assert "Ignoring unknown config field 'ingest.harnesses.claude_code'" not in caplog.text
-    assert "Ignoring unknown config field 'ingest.harnesses.codex'" not in caplog.text
-    assert "Ignoring unknown config field 'ingest.harnesses.codex.retired_field'" in caplog.text
-    assert (
-        "Ignoring unknown config field 'ingest.harnesses.codex.commit.retired_field'" in caplog.text
-    )
-    assert "ingest.memory_policy" not in caplog.text
+    diagnostics = [
+        r for r in caplog.records if r.msg == "unknown configuration fields ignored skipped=%d"
+    ]
+    assert diagnostics and all(r.degraded is True and r.args[0] > 0 for r in diagnostics)
+    for section in ("markdown", "code", "anydoc"):
+        assert "unknown_field" not in dumped[section]
+    assert "retired_field" not in dumped["vlm"]["credentials"][0]
+    assert "retired_field" not in dumped["ingest"]["harnesses"]["codex"]
+    assert "retired_field" not in dumped["ingest"]["harnesses"]["codex"]["commit"]
     assert "test-secret" not in caplog.text
+    assert "retired_field" not in caplog.text
 
 
 def test_memory_extraction_output_format_defaults_to_python_and_accepts_json(monkeypatch):
@@ -521,17 +521,17 @@ def test_openviking_config_ignores_deprecated_code_summary_mode(monkeypatch):
         OpenVikingConfigSingleton,
     )
 
-    warnings: list[str] = []
+    notices: list[str] = []
     monkeypatch.setattr(
         parser_config.logger,
-        "warning",
-        lambda message, *args, **kwargs: warnings.append(message % args if args else message),
+        "info",
+        lambda message, *args, **kwargs: notices.append(message % args if args else message),
     )
 
     config = OpenVikingConfig.from_dict({"code": {"code_summary_mode": "llm"}})
 
     assert not hasattr(config.code, "code_summary_mode")
-    assert any("code.code_summary_mode is deprecated and ignored" in item for item in warnings)
+    assert any("code.code_summary_mode is deprecated and ignored" in item for item in notices)
 
     OpenVikingConfigSingleton.reset_instance()
 

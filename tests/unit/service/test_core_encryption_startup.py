@@ -103,7 +103,13 @@ async def test_build_ragfs_binding_config_works_inside_running_event_loop(monkey
         "cache": {
             "enabled": False,
             "runtime_enabled": False,
-            "provider": "redis",
+            "cachefs": {
+                "enabled": False,
+                "instance": "default",
+                "service_name": "test-core-encryption",
+                "shared_redis_ttl_seconds": 0,
+            },
+            "instances": {},
         },
         "pathlock": {
             "provider": "filesystem",
@@ -111,7 +117,11 @@ async def test_build_ragfs_binding_config_works_inside_running_event_loop(monkey
             "lock_expire_secs": 30.0,
         },
         "coordination": {"provider": "memory"},
-        "log": {"level": "INFO", "output": "stdout"},
+        "log": {
+            "level": "INFO",
+            "output": "stdout",
+            "format": "%(asctime)s %(levelname)s %(name)s pid=%(process)d request_id=%(request_id)s trace_id=%(trace_id)s message=%(message)s",
+        },
         "encryption": {
             "root_key": b"k" * 32,
             "provider_type": 1,
