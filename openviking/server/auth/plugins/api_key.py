@@ -47,6 +47,10 @@ def _remove_header(request: Request, name: bytes) -> None:
     request.scope["headers"] = [
         (key, value) for key, value in scope_headers if key.lower() != name.lower()
     ]
+    # Request.headers may already have been read while extracting credentials.
+    # Invalidate that cached view after replacing the scope's raw header list.
+    if hasattr(request, "_headers"):
+        del request._headers
 
 
 class ApiKeyAuthPlugin(AuthPlugin):

@@ -196,7 +196,7 @@ async def test_admin_and_root_can_manage_global_directory_with_account_isolation
 @pytest.mark.parametrize("action", [AclAction.WRITE, AclAction.MANAGE])
 @pytest.mark.parametrize("role", [Role.ROOT, Role.ADMIN])
 @pytest.mark.asyncio
-async def test_system_writes_allow_root_and_limit_admin_to_custom_assets(action, role):
+async def test_system_writes_protect_official_roots_for_admin_and_root(action, role):
     fs = _fs()
     protected_uris = (
         SYSTEM_ROOT_URI,
@@ -213,13 +213,8 @@ async def test_system_writes_allow_root_and_limit_admin_to_custom_assets(action,
     for bypass_acl in (False, True):
         ctx = _ctx(role, bypass_acl=bypass_acl)
         for uri in protected_uris:
-            if role == Role.ROOT:
+            with pytest.raises(PermissionDeniedError, match=f"{action.value} permission required"):
                 await fs._ensure_access(uri, ctx, action=action)
-            else:
-                with pytest.raises(
-                    PermissionDeniedError, match=f"{action.value} permission required"
-                ):
-                    await fs._ensure_access(uri, ctx, action=action)
             await fs._ensure_access(uri, ctx, action=AclAction.READ)
         await fs._ensure_access(CUSTOM_ASSET_URI, ctx, action=action)
 
